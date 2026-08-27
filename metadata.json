@@ -1,0 +1,6 @@
+{
+  "name": "EduPortal",
+  "description": "An advanced architecture masterclass portal featuring an interactive syllabus, secure multi-step checkout, and a student learning dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
