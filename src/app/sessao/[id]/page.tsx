@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, BookOpenText, FileText, Lightbulb, Mic, PenLine, Sparkles, Volume2, VolumeX } from 'lucide-react';
-import { QUESTION_BANK, getQuestion } from '@/features/adaptive/question-bank';
 import {
   applyAttempt,
   buildNextActivities,
@@ -13,6 +12,7 @@ import {
   saveLearnerState,
 } from '@/features/adaptive/engine';
 import type { AdaptiveQuestion, LearnerState, PlannedActivity, ReasoningSignal } from '@/features/adaptive/types';
+import { getRuntimeQuestion, getRuntimeQuestionBank } from '@/features/content/repository';
 import { loadStudyPlan, localDateKey, markDayDone } from '@/features/planning/engine';
 import { trackLearningEvent } from '@/features/telemetry/engine';
 import { useBrowserVoice } from '@/features/voice/use-browser-voice';
@@ -65,7 +65,7 @@ export default function SessionPage() {
     const today = studyPlan?.days.find((day) => day.date === localDateKey() && day.status === 'planned');
 
     const scheduled: SessionActivity[] = (today?.blocks ?? [])
-      .filter((block) => block.questionId)
+      .filter((block) => block.questionId && getRuntimeQuestion(block.questionId))
       .map((block) => ({
         questionId: block.questionId as string,
         reason: block.adaptiveReason ?? 'new',
@@ -75,13 +75,14 @@ export default function SessionPage() {
     const fallbackLimit = Math.max(2, Math.min(5, today?.blocks.length || 5));
     const fallback: SessionActivity[] = buildNextActivities(state, fallbackLimit);
     const nextPlan = scheduled.length ? scheduled : fallback;
+    const runtimeBank = getRuntimeQuestionBank();
 
     setLearner(state);
     setScheduledMinutes(today?.plannedMinutes ?? null);
     setPlan(
       nextPlan.length
         ? nextPlan
-        : QUESTION_BANK.slice(0, 5).map((question) => ({ questionId: question.id, reason: 'new' as const })),
+        : runtimeBank.slice(0, 5).map((question) => ({ questionId: question.id, reason: 'new' as const })),
     );
 
     if (!sessionTracked.current) {
@@ -96,7 +97,7 @@ export default function SessionPage() {
 
   const activity = plan[index];
   const question = useMemo<AdaptiveQuestion | undefined>(
-    () => (activity ? getQuestion(activity.questionId) : undefined),
+    () => (activity ? getRuntimeQuestion(activity.questionId) : undefined),
     [activity],
   );
 
