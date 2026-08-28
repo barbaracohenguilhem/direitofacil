@@ -3,6 +3,7 @@ import type { AdaptiveQuestion } from '@/features/adaptive/types';
 import type { ContentStatus, OABQuestionRecord } from './types';
 
 const STORAGE_KEY = 'direitofacil.content-questions.v1';
+const PLACEHOLDER_EXPLANATION = 'Explicação editorial ainda não cadastrada.';
 
 export function loadContentQuestions(): OABQuestionRecord[] {
   if (typeof window === 'undefined') return [];
@@ -20,6 +21,49 @@ export function saveContentQuestions(records: OABQuestionRecord[]) {
   }
 }
 
+export function getPublicationIssues(record: OABQuestionRecord) {
+  const issues: string[] = [];
+  const adaptive = record.adaptive;
+
+  if (!record.sourceUrl?.trim()) issues.push('Informe a fonte oficial da questão.');
+  if (!record.exam?.trim()) issues.push('Identifique o exame de origem.');
+  if (!record.year) issues.push('Informe o ano do exame.');
+  if (!record.questionNumber) issues.push('Informe o número da questão na prova.');
+  if (!record.subject.trim()) issues.push('Classifique a matéria.');
+  if (!record.conceptId.trim() || !record.conceptLabel.trim()) issues.push('Classifique o conceito pedagógico.');
+
+  if (!adaptive.prompt.trim()) issues.push('O enunciado está vazio.');
+  if (adaptive.options.length !== 4 || adaptive.options.some((option) => !option.text.trim())) {
+    issues.push('As quatro alternativas precisam estar preenchidas.');
+  }
+
+  if (
+    adaptive.options.some(
+      (option) => !option.explanation.trim() || option.explanation.trim() === PLACEHOLDER_EXPLANATION,
+    )
+  ) {
+    issues.push('Explique por que cada alternativa está certa ou errada.');
+  }
+
+  if (!adaptive.reasoningKeywords.length) {
+    issues.push('Cadastre ao menos uma palavra-chave para avaliar a justificativa do aluno.');
+  }
+  if (!adaptive.nudge.trim()) issues.push('Cadastre a primeira pista pedagógica.');
+  if (!adaptive.secondNudge.trim()) issues.push('Cadastre a segunda pista pedagógica.');
+  if (!adaptive.takeaway.trim() || adaptive.takeaway === 'Conteúdo pendente de revisão editorial.') {
+    issues.push('Cadastre o que o aluno precisa guardar da questão.');
+  }
+  if (!adaptive.fgvPattern.trim() || adaptive.fgvPattern === 'Padrão ainda não classificado.') {
+    issues.push('Classifique a pegadinha ou padrão da FGV.');
+  }
+
+  return issues;
+}
+
+export function canPublishQuestion(record: OABQuestionRecord) {
+  return getPublicationIssues(record).length === 0;
+}
+
 export function upsertContentQuestions(incoming: OABQuestionRecord[]) {
   const current = loadContentQuestions();
   const byId = new Map(current.map((record) => [record.id, record]));
@@ -27,10 +71,19 @@ export function upsertContentQuestions(incoming: OABQuestionRecord[]) {
 
   for (const record of incoming) {
     const previous = byId.get(record.id);
-    byId.set(record.id, {
+    const normalized = {
       ...record,
       importedAt: previous?.importedAt ?? record.importedAt,
       updatedAt: now,
+    };
+
+    // Mesmo um CSV marcado como published não entra no motor se falhar no gate editorial.
+    byId.set(record.id, {
+      ...normalized,
+      status:
+        normalized.status === 'published' && !canPublishQuestion(normalized)
+          ? 'review'
+          : normalized.status,
     });
   }
 
@@ -45,11 +98,11 @@ export function upsertContentQuestions(incoming: OABQuestionRecord[]) {
 
 export function setQuestionStatus(id: string, status: ContentStatus) {
   const current = loadContentQuestions();
-  const next = current.map((record) =>
-    record.id === id
-      ? { ...record, status, updatedAt: new Date().toISOString() }
-      : record,
-  );
+  const next = current.map((record) => {
+    if (record.id !== id) return record;
+    if (status === 'published' && !canPublishQuestion(record)) return record;
+    return { ...record, status, updatedAt: new Date().toISOString() };
+  });
   saveContentQuestions(next);
   return next;
 }
@@ -64,7 +117,7 @@ export function getRuntimeQuestionBank(): AdaptiveQuestion[] {
   if (typeof window === 'undefined') return QUESTION_BANK;
 
   const published = loadContentQuestions()
-    .filter((record) => record.status === 'published')
+    .filter((record) => record.status === 'published' && canPublishQuestion(record))
     .map((record) => record.adaptive);
 
   const merged = new Map<string, AdaptiveQuestion>();
@@ -84,6 +137,7 @@ export function contentStats(records = loadContentQuestions()) {
     draft: records.filter((record) => record.status === 'draft').length,
     review: records.filter((record) => record.status === 'review').length,
     published: records.filter((record) => record.status === 'published').length,
+    blocked: records.filter((record) => record.status !== 'published' && !canPublishQuestion(record)).length,
     subjects: new Set(records.map((record) => record.subject)).size,
     exams: new Set(records.map((record) => record.exam).filter(Boolean)).size,
   };
