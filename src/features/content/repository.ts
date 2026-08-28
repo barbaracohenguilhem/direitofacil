@@ -64,6 +64,19 @@ export function canPublishQuestion(record: OABQuestionRecord) {
   return getPublicationIssues(record).length === 0;
 }
 
+export function canUseInAssessment(record: OABQuestionRecord) {
+  const question = record.adaptive;
+  return Boolean(
+    record.conceptId?.trim() &&
+    record.conceptLabel?.trim() &&
+    record.subject?.trim() &&
+    question.prompt.trim() &&
+    question.options.length === 4 &&
+    question.options.every((option) => option.text.trim()) &&
+    ['A', 'B', 'C', 'D'].includes(question.correctOption),
+  );
+}
+
 export function upsertContentQuestions(incoming: OABQuestionRecord[]) {
   const current = loadContentQuestions();
   const byId = new Map(current.map((record) => [record.id, record]));
@@ -140,6 +153,7 @@ export function removeContentQuestion(id: string) {
   return next;
 }
 
+// Aula Question First: exige enriquecimento pedagógico e publicação explícita.
 export function getRuntimeQuestionBank(): AdaptiveQuestion[] {
   if (typeof window === 'undefined') return QUESTION_BANK;
 
@@ -149,13 +163,32 @@ export function getRuntimeQuestionBank(): AdaptiveQuestion[] {
 
   const merged = new Map<string, AdaptiveQuestion>();
   for (const question of QUESTION_BANK) merged.set(question.id, question);
-  // Conteúdo editorial publicado pode substituir um seed de mesmo id sem alterar o motor.
   for (const question of published) merged.set(question.id, question);
+  return Array.from(merged.values());
+}
+
+// Calibração/simulado: uma questão oficial já pode ser usada depois de classificada no
+// currículo, mesmo que explicações/pistas ainda estejam em revisão. O aluno não recebe
+// feedback durante a prova, então não precisamos fingir que a questão já está pronta para aula.
+export function getAssessmentQuestionBank(): AdaptiveQuestion[] {
+  if (typeof window === 'undefined') return QUESTION_BANK;
+
+  const classifiedOfficial = loadContentQuestions()
+    .filter(canUseInAssessment)
+    .map((record) => record.adaptive);
+
+  const merged = new Map<string, AdaptiveQuestion>();
+  for (const question of QUESTION_BANK) merged.set(question.id, question);
+  for (const question of classifiedOfficial) merged.set(question.id, question);
   return Array.from(merged.values());
 }
 
 export function getRuntimeQuestion(id: string) {
   return getRuntimeQuestionBank().find((question) => question.id === id);
+}
+
+export function getAssessmentQuestion(id: string) {
+  return getAssessmentQuestionBank().find((question) => question.id === id);
 }
 
 export function contentStats(records = loadContentQuestions()) {
@@ -167,6 +200,7 @@ export function contentStats(records = loadContentQuestions()) {
     blocked: records.filter((record) => record.status !== 'published' && !canPublishQuestion(record)).length,
     unclassified: records.filter((record) => !record.conceptId?.trim()).length,
     classified: records.filter((record) => !!record.conceptId?.trim()).length,
+    assessmentReady: records.filter(canUseInAssessment).length,
     subjects: new Set(records.map((record) => record.subject)).size,
     exams: new Set(records.map((record) => record.exam).filter(Boolean)).size,
   };
