@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, BookOpenText, FileText, Lightbulb, Mic, PenLine, Sparkles } from 'lucide-react';
+import { ArrowRight, BookOpenText, FileText, Lightbulb, Mic, PenLine, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { QUESTION_BANK, getQuestion } from '@/features/adaptive/question-bank';
 import {
   applyAttempt,
@@ -15,6 +15,7 @@ import {
 import type { AdaptiveQuestion, LearnerState, PlannedActivity, ReasoningSignal } from '@/features/adaptive/types';
 import { loadStudyPlan, localDateKey } from '@/features/planning/engine';
 import { trackLearningEvent } from '@/features/telemetry/engine';
+import { useBrowserVoice } from '@/features/voice/use-browser-voice';
 
 type Stage = 'question' | 'why' | 'feedback' | 'explain' | 'materials';
 
@@ -40,6 +41,16 @@ export default function SessionPage() {
   const [signal, setSignal] = useState<ReasoningSignal>('unknown');
   const [responseMs, setResponseMs] = useState(0);
   const [attemptCommitted, setAttemptCommitted] = useState(false);
+  const [teacherVoiceEnabled, setTeacherVoiceEnabled] = useState(false);
+  const {
+    listening,
+    speechInputSupported,
+    speechOutputSupported,
+    startListening,
+    stopListening,
+    speak,
+    stopSpeaking,
+  } = useBrowserVoice();
 
   useEffect(() => {
     const state = loadLearnerState();
@@ -71,7 +82,21 @@ export default function SessionPage() {
   const activity = plan[index];
   const question = useMemo<AdaptiveQuestion | undefined>(() => activity ? getQuestion(activity.questionId) : undefined, [activity]);
 
+  useEffect(() => {
+    if (!teacherVoiceEnabled || !question || !speechOutputSupported) return;
+
+    if (stage === 'question') {
+      speak(`${question.openingLine ?? 'Vamos começar por esta questão.'} ${question.prompt}`);
+    }
+
+    if (stage === 'feedback') {
+      speak(`${signalCopy[signal]} ${hintsUsed === 0 ? question.nudge : question.secondNudge}`);
+    }
+  }, [teacherVoiceEnabled, question, stage, signal, hintsUsed, speechOutputSupported, speak]);
+
   function resetQuestion() {
+    stopListening();
+    stopSpeaking();
     setSelected(null);
     setReasoning('');
     setHintsUsed(0);
@@ -83,12 +108,31 @@ export default function SessionPage() {
   }
 
   function choose(id: string) {
+    stopSpeaking();
     setSelected(id);
     setStage('why');
   }
 
+  function toggleListening() {
+    if (listening) {
+      stopListening();
+      return;
+    }
+    startListening((text) => setReasoning(text));
+  }
+
+  function toggleTeacherVoice() {
+    if (teacherVoiceEnabled) {
+      setTeacherVoiceEnabled(false);
+      stopSpeaking();
+      return;
+    }
+    setTeacherVoiceEnabled(true);
+  }
+
   function submitReasoning() {
     if (!question || !selected || !learner) return;
+    stopListening();
     const correct = selected === question.correctOption;
     const reasoningSignal = inferReasoningSignal(
       reasoning,
@@ -103,6 +147,7 @@ export default function SessionPage() {
 
   function commitAttemptAndExplain() {
     if (!question || !selected || !learner) return;
+    stopSpeaking();
 
     if (!attemptCommitted) {
       const updated = applyAttempt(learner, {
@@ -135,6 +180,8 @@ export default function SessionPage() {
   }
 
   function completeSession() {
+    stopListening();
+    stopSpeaking();
     if (learner) finishSession(learner);
     router.push('/hoje?completed=1');
   }
@@ -184,9 +231,10 @@ export default function SessionPage() {
               <p className="mt-4 max-w-2xl text-sm leading-6 text-[#77716a]">Não precisa escrever bonito. Queremos entender o caminho que te levou até essa alternativa.</p>
               <textarea value={reasoning} onChange={(e) => setReasoning(e.target.value)} placeholder="Eu escolhi essa porque..." className="mt-8 min-h-[170px] w-full rounded-2xl border border-[#ded9d2] bg-white p-5 text-base outline-none transition focus:border-[#8f8880]" />
               <div className="mt-4 flex flex-wrap gap-3">
-                <button type="button" className="flex items-center gap-2 rounded-full border border-[#ded9d2] bg-white px-4 py-2.5 text-sm"><Mic className="h-4 w-4" /> Responder falando</button>
+                <button type="button" onClick={toggleListening} disabled={!speechInputSupported} className={`flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm transition disabled:opacity-40 ${listening ? 'border-[#1c1a18] bg-[#1c1a18] text-white' : 'border-[#ded9d2] bg-white'}`}><Mic className="h-4 w-4" /> {listening ? 'Ouvindo…' : speechInputSupported ? 'Responder falando' : 'Voz indisponível'}</button>
                 <button type="button" className="flex items-center gap-2 rounded-full border border-[#ded9d2] bg-white px-4 py-2.5 text-sm"><PenLine className="h-4 w-4" /> Escrever</button>
               </div>
+              {listening && <p className="mt-3 text-xs text-[#8a847e]">Fale normalmente. A transcrição aparece no campo acima.</p>}
               <div className="mt-auto flex justify-end pt-8">
                 <button onClick={submitReasoning} disabled={!reasoning.trim()} className="flex items-center gap-2 rounded-full bg-[#1c1a18] px-6 py-3 text-sm text-white disabled:opacity-30">Continuar <ArrowRight className="h-4 w-4" /></button>
               </div>
@@ -253,7 +301,11 @@ export default function SessionPage() {
           <div className="rounded-[24px] border border-white/10 bg-white/[.04] p-5">
             <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10"><Sparkles className="h-4 w-4" /></div><div><div className="text-sm">Professora</div><div className="text-xs text-white/45">presente na sessão</div></div></div>
             <div className="mt-6 h-14 rounded-full bg-white/[.06] p-2"><div className="flex h-full items-center justify-center gap-1">{[8,15,24,12,29,18,10,22,14,26,11].map((h,i)=><span key={i} className="w-1 rounded-full bg-white/45" style={{height:h}} />)}</div></div>
-            <p className="mt-5 text-sm leading-6 text-white/55">Ela pergunta primeiro, observa seu raciocínio e entrega só a explicação necessária. A voz real entra na integração posterior.</p>
+            <button onClick={toggleTeacherVoice} disabled={!speechOutputSupported} className={`mt-5 flex w-full items-center justify-between rounded-full border px-4 py-2.5 text-sm transition disabled:opacity-35 ${teacherVoiceEnabled ? 'border-white/30 bg-white/10' : 'border-white/10'}`}>
+              <span className="flex items-center gap-2">{teacherVoiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}{teacherVoiceEnabled ? 'Voz ativa' : speechOutputSupported ? 'Ativar voz' : 'Voz indisponível'}</span>
+              <span className="text-xs text-white/35">beta local</span>
+            </button>
+            <p className="mt-4 text-sm leading-6 text-white/55">Nesta versão, a fala usa a voz do próprio navegador. Depois, este mesmo lugar recebe uma professora realtime com raciocínio e voz natural.</p>
           </div>
           <div className="rounded-[24px] border border-white/10 p-5">
             <div className="text-xs uppercase tracking-[.12em] text-white/40">Agora</div>
