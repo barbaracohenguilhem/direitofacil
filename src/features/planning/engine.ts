@@ -1,5 +1,6 @@
 import { buildNextActivities, loadLearnerState } from '@/features/adaptive/engine';
 import { getQuestion } from '@/features/adaptive/question-bank';
+import { trackLearningEvent } from '@/features/telemetry/engine';
 import type { DayKey, StudyBlock, StudyDay, StudyPlan, StudyProfile } from './types';
 
 const PROFILE_KEY = 'direitofacil.study-profile.v1';
@@ -21,6 +22,13 @@ function dayKeyFor(date: Date): DayKey {
 export function saveStudyProfile(profile: StudyProfile) {
   if (typeof window !== 'undefined') {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    trackLearningEvent('onboarding_completed', {
+      examDate: profile.examDate,
+      sessionMinutes: profile.sessionMinutes,
+      calendarConnected: profile.calendarConnected,
+      commitmentCount: profile.commitments.length,
+      weeklyMinutes: profile.availability.reduce((sum, item) => sum + item.minutes, 0),
+    });
   }
 }
 
@@ -127,6 +135,7 @@ export function reflowMissedDay(plan: StudyPlan, date: string): StudyPlan {
   const source = plan.days[index];
   if (source.status !== 'planned' || source.plannedMinutes <= 0) return plan;
 
+  const originalMinutes = source.plannedMinutes;
   let remaining = source.plannedMinutes;
   const days = plan.days.map((day, i) => {
     if (i !== index) return { ...day, blocks: [...day.blocks] };
@@ -137,7 +146,6 @@ export function reflowMissedDay(plan: StudyPlan, date: string): StudyPlan {
     const day = days[i];
     if (day.status === 'unavailable' || day.baseMinutes <= 0) continue;
 
-    // Não despejar uma falta inteira no dia seguinte: usar no máximo 50% extra da janela-base.
     const extraCapacity = Math.max(15, Math.floor(day.baseMinutes * 0.5));
     const add = Math.min(extraCapacity, remaining);
     day.carriedMinutes += add;
@@ -154,6 +162,13 @@ export function reflowMissedDay(plan: StudyPlan, date: string): StudyPlan {
   };
 
   saveStudyPlan(updated);
+  trackLearningEvent('schedule_reflowed', {
+    date,
+    originalMinutes,
+    availableMinutes: 0,
+    movedMinutes: originalMinutes - remaining,
+    stillUnplacedMinutes: remaining,
+  });
   return updated;
 }
 
@@ -203,5 +218,12 @@ export function rescheduleWithMinutes(plan: StudyPlan, date: string, availableMi
     totalCarriedMinutes: remaining,
   };
   saveStudyPlan(updated);
+  trackLearningEvent('schedule_reflowed', {
+    date,
+    originalMinutes: previous.plannedMinutes,
+    availableMinutes,
+    movedMinutes: deficit - remaining,
+    stillUnplacedMinutes: remaining,
+  });
   return updated;
 }
