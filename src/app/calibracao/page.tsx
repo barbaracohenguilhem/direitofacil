@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock3, LockKeyhole, Sparkles } from 'lucide-react';
-import { loadLearnerState } from '@/features/adaptive/engine';
+import { loadLearnerState, saveLearnerState } from '@/features/adaptive/engine';
 import { QUESTION_BANK } from '@/features/adaptive/question-bank';
-import { getCalibrationReadiness } from '@/features/calibration/engine';
+import { applyCalibrationEvidence, getCalibrationReadiness } from '@/features/calibration/engine';
 import type { LearnerState } from '@/features/adaptive/types';
 
 type CalibrationResult = {
@@ -63,14 +63,15 @@ export default function CalibrationPage() {
 
     const bySubject: CalibrationResult['bySubject'] = {};
     let correct = 0;
-    for (const item of questions) {
+    const evidence = questions.map((item) => {
       const hit = answers[item.id] === item.correctOption;
       if (hit) correct += 1;
       const row = bySubject[item.subject] ?? { correct: 0, total: 0 };
       row.total += 1;
       if (hit) row.correct += 1;
       bySubject[item.subject] = row;
-    }
+      return { questionId: item.id, correct: hit };
+    });
 
     const finalResult: CalibrationResult = {
       createdAt: new Date().toISOString(),
@@ -79,6 +80,13 @@ export default function CalibrationPage() {
       durationMs: Date.now() - startedAt.current,
       bySubject,
     };
+
+    if (learner) {
+      const recalibratedLearner = applyCalibrationEvidence(learner, evidence);
+      saveLearnerState(recalibratedLearner);
+      setLearner(recalibratedLearner);
+    }
+
     saveResult(finalResult);
     setResult(finalResult);
     setFinished(true);
@@ -144,7 +152,7 @@ export default function CalibrationPage() {
               </div>
             </div>
           </div>
-          <p className="mt-8 max-w-2xl text-sm leading-6 text-[#77716a]">Esses dados ficam junto do histórico silencioso de aprendizagem. Você não precisa decidir o que revisar agora; o próximo percurso faz isso.</p>
+          <p className="mt-8 max-w-2xl text-sm leading-6 text-[#77716a]">Esses dados já foram incorporados ao histórico silencioso de aprendizagem. Você não precisa decidir o que revisar agora; o próximo percurso faz isso.</p>
           <button onClick={() => router.push('/hoje')} className="mt-8 flex items-center gap-2 rounded-full bg-[#1c1a18] px-6 py-3 text-sm text-white">Voltar para hoje <ArrowRight className="h-4 w-4" /></button>
         </div>
       </main>
