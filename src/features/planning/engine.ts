@@ -65,11 +65,16 @@ function blockDurations(total: number, count: number) {
   return Array.from({ length: count }, (_, i) => base + (i < rest ? 1 : 0));
 }
 
+function activityCountFor(minutes: number) {
+  if (minutes <= 0) return 0;
+  return Math.max(2, Math.min(6, Math.ceil(minutes / 10)));
+}
+
 function composeBlocks(minutes: number): StudyBlock[] {
   if (minutes <= 0) return [];
 
   const learner = loadLearnerState();
-  const activities = buildNextActivities(learner, Math.max(2, Math.min(4, Math.ceil(minutes / 15))));
+  const activities = buildNextActivities(learner, activityCountFor(minutes));
   const durations = blockDurations(minutes, activities.length);
 
   return activities.map((activity, index) => {
@@ -77,6 +82,8 @@ function composeBlocks(minutes: number): StudyBlock[] {
     const isReview = activity.reason === 'retention' || activity.reason === 'reinforce' || activity.reason === 'transfer';
     return {
       id: `${activity.questionId}-${index}`,
+      questionId: activity.questionId,
+      adaptiveReason: activity.reason,
       label: isReview ? 'Revisão aplicada' : 'Aprender pela questão',
       subject: question?.subject,
       minutes: durations[index] ?? 0,
