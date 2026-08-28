@@ -1,8 +1,12 @@
-export type Subject =
+export type KnownSubject =
   | 'Ética'
   | 'Processo Civil'
   | 'Constitucional'
   | 'Direito Civil';
+
+// O banco completo da OAB terá muitas matérias. Mantemos autocomplete para as já usadas
+// no protótipo sem impedir novas disciplinas importadas pelo Content Engine.
+export type Subject = KnownSubject | (string & {});
 
 export type ReasoningSignal =
   | 'solid'
