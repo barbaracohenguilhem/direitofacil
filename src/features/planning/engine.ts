@@ -15,6 +15,12 @@ export function localDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function nextLocalDateKey(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  date.setDate(date.getDate() + 1);
+  return localDateKey(date);
+}
+
 function dayKeyFor(date: Date): DayKey {
   return DAY_KEYS[date.getDay()];
 }
@@ -259,7 +265,11 @@ export function reflowMissedDay(plan: StudyPlan, date: string): StudyPlan {
     return { ...day, status: 'missed' as const, plannedMinutes: 0, blocks: [] };
   });
 
-  const redistributed = distributeBacklog({ ...plan, days, totalCarriedMinutes: 0 }, originalMinutes + plan.totalCarriedMinutes, date);
+  const redistributed = distributeBacklog(
+    { ...plan, days, totalCarriedMinutes: 0 },
+    originalMinutes + plan.totalCarriedMinutes,
+    nextLocalDateKey(date),
+  );
   saveStudyPlan(redistributed);
   trackLearningEvent('schedule_reflowed', {
     date,
@@ -313,7 +323,7 @@ export function rescheduleWithMinutes(plan: StudyPlan, date: string, availableMi
   const redistributed = distributeBacklog(
     { ...plan, days, totalCarriedMinutes: 0 },
     deficit + plan.totalCarriedMinutes,
-    date,
+    nextLocalDateKey(date),
   );
   saveStudyPlan(redistributed);
   trackLearningEvent('schedule_reflowed', {
