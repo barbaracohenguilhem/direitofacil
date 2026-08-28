@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, BookOpenCheck, CalendarClock, Check, MessageCircleMore, UsersRound, X } from 'lucide-react';
+import { ArrowRight, BookOpenCheck, CalendarClock, Check, MessageCircleMore, Sparkles, UsersRound, X } from 'lucide-react';
 import { loadLearnerState } from '@/features/adaptive/engine';
 import type { LearnerState } from '@/features/adaptive/types';
+import { getCalibrationReadiness } from '@/features/calibration/engine';
 import {
   ensureStudyPlan,
   loadStudyProfile,
@@ -56,6 +57,7 @@ export default function HojePage() {
 
   const todayKey = localDateKey();
   const today = useMemo<StudyDay | null>(() => plan?.days.find((day) => day.date === todayKey) ?? null, [plan, todayKey]);
+  const calibration = useMemo(() => (learner ? getCalibrationReadiness(learner) : null), [learner]);
 
   const nextWindow = useMemo(() => {
     if (!plan) return null;
@@ -156,6 +158,18 @@ export default function HojePage() {
             ) : null}
           </div>
         </section>
+
+        {calibration?.ready && (
+          <section className="mt-12 rounded-[28px] bg-[#171614] p-6 text-[#f8f6f2] md:flex md:items-end md:justify-between md:gap-10 md:p-8">
+            <div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10"><Sparkles className="h-4 w-4" /></div>
+              <p className="mt-6 text-sm text-white/45">O sistema abriu uma nova etapa.</p>
+              <h2 className="serif mt-2 max-w-2xl text-3xl leading-tight md:text-4xl">Você está pronta para uma calibração.</h2>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-white/55">Ela apareceu porque já existe evidência suficiente para o resultado ensinar alguma coisa ao seu percurso.</p>
+            </div>
+            <button onClick={() => router.push('/calibracao')} className="mt-7 flex shrink-0 items-center gap-2 rounded-full bg-[#f8f6f2] px-5 py-3 text-sm text-[#171614] md:mt-0">Fazer calibração <ArrowRight className="h-4 w-4" /></button>
+          </section>
+        )}
 
         <section className="mt-16 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
