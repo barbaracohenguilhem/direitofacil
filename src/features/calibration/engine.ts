@@ -1,5 +1,5 @@
-import { getQuestion } from '@/features/adaptive/question-bank';
-import type { LearnerState } from '@/features/adaptive/types';
+import type { AdaptiveQuestion, LearnerState } from '@/features/adaptive/types';
+import { getRuntimeQuestion, getRuntimeQuestionBank } from '@/features/content/repository';
 import { trackLearningEvent } from '@/features/telemetry/engine';
 
 export type CalibrationReadiness = {
@@ -37,12 +37,58 @@ export function getCalibrationReadiness(state: LearnerState): CalibrationReadine
   };
 }
 
+export function buildCalibrationQuestions(state: LearnerState, requestedSize: number): AdaptiveQuestion[] {
+  const observedConceptIds = new Set(Object.keys(state.concepts));
+  const recentQuestionIds = new Set(state.attempts.slice(-4).map((attempt) => attempt.questionId));
+
+  const ranked = getRuntimeQuestionBank()
+    .filter((question) => observedConceptIds.has(question.conceptId))
+    .map((question) => {
+      const concept = state.concepts[question.conceptId];
+      const weakness = 1 - (concept?.strength ?? 0.25);
+      const transferBoost = question.isTransfer ? 0.18 : 0;
+      const recentPenalty = recentQuestionIds.has(question.id) ? 0.25 : 0;
+      return {
+        question,
+        score: weakness + transferBoost - recentPenalty,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const selected: AdaptiveQuestion[] = [];
+  let previousSubject: string | undefined;
+
+  for (const candidate of ranked) {
+    if (selected.length >= requestedSize) break;
+
+    if (candidate.question.subject === previousSubject) {
+      const alternate = ranked.find(
+        (item) =>
+          item.question.subject !== previousSubject &&
+          !selected.some((selectedQuestion) => selectedQuestion.id === item.question.id),
+      );
+      if (alternate) {
+        selected.push(alternate.question);
+        previousSubject = alternate.question.subject;
+        continue;
+      }
+    }
+
+    if (!selected.some((item) => item.id === candidate.question.id)) {
+      selected.push(candidate.question);
+      previousSubject = candidate.question.subject;
+    }
+  }
+
+  return selected;
+}
+
 export function applyCalibrationEvidence(state: LearnerState, evidence: CalibrationEvidence[]): LearnerState {
   const concepts = { ...state.concepts };
   const now = new Date();
 
   for (const item of evidence) {
-    const question = getQuestion(item.questionId);
+    const question = getRuntimeQuestion(item.questionId);
     if (!question) continue;
 
     const previous = concepts[question.conceptId] ?? {
