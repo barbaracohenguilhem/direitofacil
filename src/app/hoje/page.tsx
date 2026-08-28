@@ -106,7 +106,10 @@ export default function HojePage() {
       <div className="oab-container">
         <header className="flex items-center justify-between py-3">
           <div className="serif text-xl">direito fácil</div>
-          <button className="rounded-full border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)]">Perfil</button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => router.push('/materiais')} className="rounded-full border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)]">Materiais</button>
+            <button className="rounded-full border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)]">Perfil</button>
+          </div>
         </header>
 
         {(completed || planNotice) && (
