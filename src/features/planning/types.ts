@@ -18,6 +18,8 @@ export type FixedCommitment = {
 
 export type StudyProfile = {
   examDate: string;
+  examTargetMode?: 'official' | 'practice';
+  examCode?: string;
   sessionMinutes: number;
   calendarConnected: boolean;
   availability: DailyAvailability[];
