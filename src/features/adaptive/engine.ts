@@ -1,5 +1,5 @@
+import { getRuntimeQuestionBank } from '@/features/content/repository';
 import { trackLearningEvent } from '@/features/telemetry/engine';
-import { QUESTION_BANK } from './question-bank';
 import type { Attempt, LearnerState, PlannedActivity, ReasoningSignal } from './types';
 
 const STORAGE_KEY = 'direitofacil.learner-state.v1';
@@ -110,8 +110,9 @@ function isReviewDue(nextReviewAt?: string) {
 export function buildNextActivities(state: LearnerState, limit = 5): PlannedActivity[] {
   const recentSubjects = state.attempts.slice(-2).map((attempt) => attempt.subject);
   const attemptedIds = new Set(state.attempts.slice(-8).map((attempt) => attempt.questionId));
+  const runtimeBank = getRuntimeQuestionBank();
 
-  const ranked = QUESTION_BANK.map((question) => {
+  const ranked = runtimeBank.map((question) => {
     const concept = state.concepts[question.conceptId];
     const strength = concept?.strength ?? 0.28;
     const neverSeen = !concept;
