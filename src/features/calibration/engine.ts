@@ -1,5 +1,6 @@
 import { getQuestion } from '@/features/adaptive/question-bank';
 import type { LearnerState } from '@/features/adaptive/types';
+import { trackLearningEvent } from '@/features/telemetry/engine';
 
 export type CalibrationReadiness = {
   ready: boolean;
@@ -50,7 +51,6 @@ export function applyCalibrationEvidence(state: LearnerState, evidence: Calibrat
       exposures: 0,
     };
 
-    // Calibração pesa bastante porque acontece sem pista, professora ou justificativa guiada.
     const delta = item.correct ? 0.14 : -0.13;
     const nextStrength = Math.max(0.05, Math.min(0.98, previous.strength + delta));
     const nextReview = new Date(now);
@@ -64,6 +64,11 @@ export function applyCalibrationEvidence(state: LearnerState, evidence: Calibrat
       nextReviewAt: nextReview.toISOString(),
     };
   }
+
+  trackLearningEvent('calibration_completed', {
+    total: evidence.length,
+    correct: evidence.filter((item) => item.correct).length,
+  });
 
   return {
     ...state,
