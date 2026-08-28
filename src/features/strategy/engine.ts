@@ -19,6 +19,15 @@ export type ConceptOpportunity = {
   opportunity: number;
 };
 
+export type InternalScoreProjection = {
+  projectedScore: number | null;
+  gapTo40: number | null;
+  confidence: number;
+  observedConcepts: number;
+  totalConcepts: number;
+  note: string;
+};
+
 function daysBetweenTodayAnd(examDate: string) {
   const exam = new Date(`${examDate}T12:00:00`);
   const today = new Date();
@@ -65,11 +74,8 @@ export function strategyScoreModifiers({
   const curriculum = getCurriculumConcept(conceptId);
   const incidence = curriculum?.incidenceWeight ?? 0.72;
 
-  // Perto da prova, fraqueza em conteúdo de alta incidência vale mais que exploração indiscriminada.
   const pointOpportunityBoost = (1 - strength) * incidence * (0.12 + context.urgency * 0.28);
   const incidenceBoost = incidence * (0.04 + context.urgency * 0.11);
-
-  // Conteúdo novo continua possível, mas perde espaço perto da prova quando o retorno esperado é baixo.
   const lowYieldNewPenalty = neverSeen
     ? context.urgency * Math.max(0, 0.82 - incidence) * 0.32
     : 0;
@@ -94,4 +100,48 @@ export function rankPointOpportunities(state: LearnerState): ConceptOpportunity[
       opportunity: (1 - strength) * concept.incidenceWeight,
     };
   }).sort((a, b) => b.opportunity - a.opportunity);
+}
+
+export function estimateInternalScoreProjection(state: LearnerState): InternalScoreProjection {
+  const observed = CURRICULUM.filter((concept) => !!state.concepts[concept.id]);
+  const observedConcepts = observed.length;
+  const totalConcepts = CURRICULUM.length;
+  const evidenceConfidence = Math.min(1, state.attempts.length / 32);
+  const coverageConfidence = totalConcepts ? observedConcepts / totalConcepts : 0;
+  const confidence = Math.min(1, evidenceConfidence * 0.55 + coverageConfidence * 0.45);
+
+  if (state.attempts.length < 5 || observedConcepts < 2) {
+    return {
+      projectedScore: null,
+      gapTo40: null,
+      confidence,
+      observedConcepts,
+      totalConcepts,
+      note: 'Evidência insuficiente. Não usar esta projeção com o aluno.',
+    };
+  }
+
+  const totalWeight = CURRICULUM.reduce((sum, concept) => sum + concept.incidenceWeight, 0);
+  const weightedProbability = CURRICULUM.reduce((sum, concept) => {
+    const conceptState = state.concepts[concept.id];
+    // Questão objetiva tem chance-base de acerto por chute; força pedagógica adiciona evidência acima disso.
+    const strength = conceptState?.strength ?? 0.16;
+    const probability = Math.min(0.93, 0.25 + strength * 0.68);
+    return sum + probability * concept.incidenceWeight;
+  }, 0) / Math.max(totalWeight, 1);
+
+  // A projeção é deliberadamente puxada para o centro quando a cobertura ainda é pequena.
+  const rawScore = weightedProbability * 80;
+  const conservativeAnchor = 31;
+  const blendedScore = conservativeAnchor * (1 - confidence) + rawScore * confidence;
+  const projectedScore = Math.max(0, Math.min(80, Number(blendedScore.toFixed(1))));
+
+  return {
+    projectedScore,
+    gapTo40: Number(Math.max(0, 40 - projectedScore).toFixed(1)),
+    confidence,
+    observedConcepts,
+    totalConcepts,
+    note: 'Proxy interno. Precisa ser recalibrado com banco histórico completo e resultados reais antes de ser exibido ao aluno.',
+  };
 }
