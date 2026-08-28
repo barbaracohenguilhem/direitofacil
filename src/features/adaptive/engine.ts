@@ -1,5 +1,6 @@
 import { getRuntimeQuestionBank } from '@/features/content/repository';
 import { trackLearningEvent } from '@/features/telemetry/engine';
+import { conceptIsUnlocked, getCurriculumConcept } from './curriculum';
 import type { Attempt, LearnerState, PlannedActivity, ReasoningSignal } from './types';
 
 const STORAGE_KEY = 'direitofacil.learner-state.v1';
@@ -110,10 +111,22 @@ function isReviewDue(nextReviewAt?: string) {
 export function buildNextActivities(state: LearnerState, limit = 5): PlannedActivity[] {
   const recentSubjects = state.attempts.slice(-2).map((attempt) => attempt.subject);
   const attemptedIds = new Set(state.attempts.slice(-8).map((attempt) => attempt.questionId));
-  const runtimeBank = getRuntimeQuestionBank();
+  const strengths = Object.fromEntries(
+    Object.entries(state.concepts).map(([conceptId, concept]) => [conceptId, concept.strength]),
+  );
+
+  const runtimeBank = getRuntimeQuestionBank().filter((question) => {
+    // Conteúdo editorial que ainda não pertence ao grafo pode circular normalmente.
+    // Conceitos mapeados no currículo só entram quando o passo anterior demonstrou força suficiente.
+    const mapped = getCurriculumConcept(question.conceptId);
+    if (!mapped) return true;
+    if (state.concepts[question.conceptId]) return true;
+    return conceptIsUnlocked(question.conceptId, strengths);
+  });
 
   const ranked = runtimeBank.map((question) => {
     const concept = state.concepts[question.conceptId];
+    const curriculum = getCurriculumConcept(question.conceptId);
     const strength = concept?.strength ?? 0.28;
     const neverSeen = !concept;
     const due = isReviewDue(concept?.nextReviewAt);
@@ -123,11 +136,19 @@ export function buildNextActivities(state: LearnerState, limit = 5): PlannedActi
     const weaknessBoost = (1 - strength) * 0.55;
     const dueBoost = due ? 0.35 : 0;
     const newBoost = neverSeen ? 0.18 : 0;
+    const incidenceBoost = (curriculum?.incidenceWeight ?? 0.8) * 0.12;
     const repeatPenalty = recentlyAttempted ? 0.5 : 0;
 
     return {
       question,
-      score: weaknessBoost + dueBoost + newBoost + transferBoost - sameSubjectPenalty - repeatPenalty,
+      score:
+        weaknessBoost +
+        dueBoost +
+        newBoost +
+        transferBoost +
+        incidenceBoost -
+        sameSubjectPenalty -
+        repeatPenalty,
       reason: question.isTransfer && concept?.exposures
         ? ('transfer' as const)
         : due
@@ -143,6 +164,7 @@ export function buildNextActivities(state: LearnerState, limit = 5): PlannedActi
 
   for (const item of ranked) {
     if (chosen.length >= limit) break;
+
     if (chosen.length > 0 && item.question.subject === lastSubject) {
       const alternative = ranked.find(
         (candidate) =>
