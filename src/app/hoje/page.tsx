@@ -15,6 +15,7 @@ import {
   rescheduleWithMinutes,
 } from '@/features/planning/engine';
 import type { StudyDay, StudyPlan, StudyProfile } from '@/features/planning/types';
+import { trackLearningEvent } from '@/features/telemetry/engine';
 import { SocraticTutor } from '@/features/tutor/socratic-tutor';
 
 function formatMinutes(value: number) {
@@ -77,6 +78,11 @@ export default function HojePage() {
     setReflowOpen(true);
   }
 
+  function openTutor() {
+    trackLearningEvent('tutor_opened', { origin: 'hoje' });
+    setTutorOpen(true);
+  }
+
   function applyReflow() {
     if (!plan || !today || availableToday === null) return;
 
@@ -108,7 +114,7 @@ export default function HojePage() {
           <div className="serif text-xl">direito fácil</div>
           <div className="flex items-center gap-2">
             <button onClick={() => router.push('/materiais')} className="rounded-full border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)]">Materiais</button>
-            <button className="rounded-full border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)]">Perfil</button>
+            <button onClick={() => router.push('/perfil')} className="rounded-full border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)]">Perfil</button>
           </div>
         </header>
 
@@ -202,7 +208,7 @@ export default function HojePage() {
           <button onClick={openReflow} disabled={!today || today.status === 'done'} className="rounded-full border border-[var(--line)] bg-white px-5 py-3 text-sm disabled:opacity-40">Reorganizar meu dia</button>
         </section>
 
-        <button onClick={() => setTutorOpen(true)} className="fixed bottom-5 right-5 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-[0_8px_30px_rgba(30,25,20,.12)] ring-1 ring-[var(--line)]" aria-label="Abrir tutor">
+        <button onClick={openTutor} className="fixed bottom-5 right-5 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-[0_8px_30px_rgba(30,25,20,.12)] ring-1 ring-[var(--line)]" aria-label="Abrir tutor">
           <MessageCircleMore className="h-5 w-5" />
         </button>
       </div>
