@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock3, LockKeyhole, Sparkles } from 'lucide-react';
 import { loadLearnerState, saveLearnerState } from '@/features/adaptive/engine';
-import { QUESTION_BANK } from '@/features/adaptive/question-bank';
-import { applyCalibrationEvidence, getCalibrationReadiness } from '@/features/calibration/engine';
+import { applyCalibrationEvidence, buildCalibrationQuestions, getCalibrationReadiness } from '@/features/calibration/engine';
 import type { LearnerState } from '@/features/adaptive/types';
 
 type CalibrationResult = {
@@ -42,7 +41,10 @@ export default function CalibrationPage() {
   }, []);
 
   const readiness = useMemo(() => (learner ? getCalibrationReadiness(learner) : null), [learner]);
-  const questions = useMemo(() => QUESTION_BANK.slice(0, 5), []);
+  const questions = useMemo(
+    () => (learner && readiness ? buildCalibrationQuestions(learner, readiness.size) : []),
+    [learner, readiness],
+  );
   const question = questions[index];
 
   function begin() {
@@ -51,11 +53,12 @@ export default function CalibrationPage() {
   }
 
   function choose(option: string) {
+    if (!question) return;
     setAnswers((current) => ({ ...current, [question.id]: option }));
   }
 
   function next() {
-    if (!answers[question.id]) return;
+    if (!question || !answers[question.id]) return;
     if (index < questions.length - 1) {
       setIndex((current) => current + 1);
       return;
@@ -93,7 +96,7 @@ export default function CalibrationPage() {
   }
 
   if (!learner || !readiness) {
-    return <main className="min-h-dvh bg-[#f8f6f2] flex items-center justify-center text-sm text-[#8a847e]">Preparando…</main>;
+    return <main className="flex min-h-dvh items-center justify-center bg-[#f8f6f2] text-sm text-[#8a847e]">Preparando…</main>;
   }
 
   if (!readiness.ready) {
@@ -117,13 +120,13 @@ export default function CalibrationPage() {
           <Sparkles className="h-6 w-6 text-white/55" />
           <p className="mt-7 text-sm text-white/45">Uma pausa no percurso.</p>
           <h1 className="serif mt-3 max-w-3xl text-5xl leading-tight md:text-7xl">Você está pronta para uma calibração.</h1>
-          <p className="mt-6 max-w-2xl text-base leading-7 text-white/55">Durante a calibração não há professora, pista ou justificativa. A ideia é observar como o que você aprendeu se comporta quando a questão chega sem ajuda.</p>
+          <p className="mt-6 max-w-2xl text-base leading-7 text-white/55">Durante a calibração não há professora, pista ou justificativa. Entram apenas conceitos que já passaram pelo seu caminho; a ideia é ver como eles se sustentam sem ajuda.</p>
           <div className="mt-8 flex flex-wrap gap-3 text-sm text-white/60">
-            <span className="rounded-full border border-white/10 px-4 py-2">5 questões nesta versão</span>
+            <span className="rounded-full border border-white/10 px-4 py-2">{questions.length} questões</span>
             <span className="rounded-full border border-white/10 px-4 py-2">sem feedback durante</span>
             <span className="rounded-full border border-white/10 px-4 py-2">resultado recalibra o caminho</span>
           </div>
-          <button onClick={begin} className="mt-10 flex w-fit items-center gap-2 rounded-full bg-[#f8f6f2] px-6 py-3 text-sm text-[#171614]">Começar calibração <ArrowRight className="h-4 w-4" /></button>
+          <button onClick={begin} disabled={!questions.length} className="mt-10 flex w-fit items-center gap-2 rounded-full bg-[#f8f6f2] px-6 py-3 text-sm text-[#171614] disabled:opacity-30">Começar calibração <ArrowRight className="h-4 w-4" /></button>
         </div>
       </main>
     );
@@ -157,6 +160,10 @@ export default function CalibrationPage() {
         </div>
       </main>
     );
+  }
+
+  if (!question) {
+    return <main className="flex min-h-dvh items-center justify-center bg-[#171614] text-sm text-white/45">Preparando a próxima questão…</main>;
   }
 
   return (
