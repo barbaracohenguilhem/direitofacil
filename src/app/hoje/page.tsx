@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { ArrowRight, BookOpenCheck, CalendarClock, MessageCircleMore, UsersRound } from 'lucide-react';
 import { buildNextActivities, loadLearnerState } from '@/features/adaptive/engine';
 import { getQuestion } from '@/features/adaptive/question-bank';
@@ -9,11 +9,12 @@ import type { LearnerState } from '@/features/adaptive/types';
 
 export default function HojePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [learner, setLearner] = useState<LearnerState | null>(null);
+  const [completed, setCompleted] = useState(false);
 
   useEffect(() => {
     setLearner(loadLearnerState());
+    setCompleted(new URLSearchParams(window.location.search).get('completed') === '1');
   }, []);
 
   const nextItems = useMemo(() => {
@@ -23,7 +24,13 @@ export default function HojePage() {
       .filter((item) => item.question);
   }, [learner]);
 
-  const completed = searchParams.get('completed') === '1';
+  const visibleItems = nextItems.length
+    ? nextItems
+    : [
+        { label: 'Ética', minutes: '12 min' },
+        { label: 'Processo Civil', minutes: '15 min' },
+        { label: 'Constitucional', minutes: '10 min' },
+      ];
 
   return (
     <main className="oab-shell px-4 py-5 md:py-8">
@@ -51,19 +58,19 @@ export default function HojePage() {
               <span>{completed ? 'próxima janela' : '47 min'}</span>
             </div>
             <div className="mt-6 space-y-4">
-              {(nextItems.length ? nextItems : [
-                { question: { subject: 'Ética' }, activity: { reason: 'new' } },
-                { question: { subject: 'Processo Civil' }, activity: { reason: 'new' } },
-                { question: { subject: 'Constitucional' }, activity: { reason: 'new' } },
-              ]).map((item, index) => (
-                <div key={`${item.question?.subject}-${index}`}>
-                  <div className="flex items-center justify-between gap-4">
-                    <span>{item.question?.subject}</span>
-                    <span className="text-sm text-[var(--muted)]">{index === 0 ? '12 min' : index === 1 ? '15 min' : '10 min'}</span>
+              {visibleItems.map((item, index) => {
+                const label = 'question' in item ? item.question?.subject ?? 'Revisão' : item.label;
+                const minutes = 'minutes' in item ? item.minutes : index === 0 ? '12 min' : index === 1 ? '15 min' : '10 min';
+                return (
+                  <div key={`${label}-${index}`}>
+                    <div className="flex items-center justify-between gap-4">
+                      <span>{label}</span>
+                      <span className="text-sm text-[var(--muted)]">{minutes}</span>
+                    </div>
+                    {index < visibleItems.length - 1 && <div className="mt-4 h-px bg-[var(--line)]" />}
                   </div>
-                  {index < Math.min(nextItems.length || 3, 4) - 1 && <div className="mt-4 h-px bg-[var(--line)]" />}
-                </div>
-              ))}
+                );
+              })}
             </div>
             <button onClick={() => router.push('/sessao/hoje')} className="mt-7 flex w-full items-center justify-between rounded-full bg-[var(--ink)] px-5 py-4 text-left text-sm font-medium text-white">
               {completed ? 'Começar próxima sessão' : 'Continuar preparação'} <ArrowRight className="h-4 w-4" />
