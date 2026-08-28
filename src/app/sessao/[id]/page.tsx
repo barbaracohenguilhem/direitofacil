@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, BookOpenText, FileText, Lightbulb, Mic, PenLine, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpenText,
+  FileText,
+  Lightbulb,
+  Mic,
+  Sparkles,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import {
   applyAttempt,
   buildNextActivities,
@@ -11,7 +21,12 @@ import {
   loadLearnerState,
   saveLearnerState,
 } from '@/features/adaptive/engine';
-import type { AdaptiveQuestion, LearnerState, PlannedActivity, ReasoningSignal } from '@/features/adaptive/types';
+import type {
+  AdaptiveQuestion,
+  LearnerState,
+  PlannedActivity,
+  ReasoningSignal,
+} from '@/features/adaptive/types';
 import { getRuntimeQuestion, getRuntimeQuestionBank } from '@/features/content/repository';
 import { loadStudyPlan, localDateKey, markDayDone } from '@/features/planning/engine';
 import { trackLearningEvent } from '@/features/telemetry/engine';
@@ -21,11 +36,11 @@ type Stage = 'question' | 'why' | 'feedback' | 'explain' | 'materials';
 type SessionActivity = PlannedActivity & { minutes?: number };
 
 const signalCopy: Record<ReasoningSignal, string> = {
-  solid: 'Seu raciocínio está consistente. Agora vamos levar essa lógica para outro contexto.',
-  partial: 'Você já tem uma parte importante da lógica. Vou completar só o pedaço que ainda está solto.',
-  lucky: 'Você chegou à alternativa certa, mas o caminho ainda não está firme. Vamos ajustar isso agora.',
+  solid: 'Isso. E o mais importante: você chegou aqui pelo motivo certo.',
+  partial: 'Você já tem uma parte importante da lógica. Falta só separar uma coisa.',
+  lucky: 'Você marcou a melhor alternativa, mas o caminho que te trouxe até ela ainda não está firme.',
   confused: 'Tem uma regra verdadeira misturada com outra ideia aqui. Vamos separar as duas.',
-  unknown: 'Tudo bem ainda não ter uma regra clara. A tentativa já nos mostra por onde começar.',
+  unknown: 'Ainda não apareceu uma regra clara no seu raciocínio. Ótimo: agora sabemos exatamente por onde começar.',
 };
 
 function formatMinutes(value?: number) {
@@ -49,6 +64,7 @@ export default function SessionPage() {
   const [responseMs, setResponseMs] = useState(0);
   const [attemptCommitted, setAttemptCommitted] = useState(false);
   const [teacherVoiceEnabled, setTeacherVoiceEnabled] = useState(false);
+
   const {
     listening,
     speechInputSupported,
@@ -62,7 +78,9 @@ export default function SessionPage() {
   useEffect(() => {
     const state = loadLearnerState();
     const studyPlan = loadStudyPlan();
-    const today = studyPlan?.days.find((day) => day.date === localDateKey() && day.status === 'planned');
+    const today = studyPlan?.days.find(
+      (day) => day.date === localDateKey() && day.status === 'planned',
+    );
 
     const scheduled: SessionActivity[] = (today?.blocks ?? [])
       .filter((block) => block.questionId && getRuntimeQuestion(block.questionId))
@@ -82,7 +100,9 @@ export default function SessionPage() {
     setPlan(
       nextPlan.length
         ? nextPlan
-        : runtimeBank.slice(0, 5).map((question) => ({ questionId: question.id, reason: 'new' as const })),
+        : runtimeBank
+            .slice(0, 5)
+            .map((question) => ({ questionId: question.id, reason: 'new' as const })),
     );
 
     if (!sessionTracked.current) {
@@ -210,40 +230,107 @@ export default function SessionPage() {
   }
 
   if (!question || !learner) {
-    return <main className="flex min-h-dvh items-center justify-center bg-[#171614] text-white"><div className="text-sm text-white/50">Preparando sua sessão…</div></main>;
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-[#faf9f7] text-sm text-[#8d867e]">
+        Preparando sua sessão…
+      </main>
+    );
   }
 
   const selectedOption = question.options.find((option) => option.id === selected);
   const correct = selected === question.correctOption;
+  const progress = plan.length ? ((index + 1) / plan.length) * 100 : 0;
 
   return (
-    <main className="min-h-dvh bg-[#171614] text-[#f8f6f2]">
-      <header className="border-b border-white/10 px-5 py-4 md:px-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-          <div className="serif text-lg">direito fácil</div>
-          <div className="text-right text-xs text-white/45">
-            Sessão de hoje · {index + 1} de {plan.length}
-            {scheduledMinutes ? ` · ${scheduledMinutes} min` : ''}
+    <main className="min-h-dvh bg-[#faf9f7] text-[#191816]">
+      <header className="sticky top-0 z-20 border-b border-[#e7e2dc] bg-[#faf9f7]/95 px-5 backdrop-blur-md md:px-8">
+        <div className="mx-auto flex h-[70px] max-w-[1160px] items-center justify-between gap-5">
+          <button
+            onClick={() => router.push('/hoje')}
+            className="flex items-center gap-2 text-sm text-[#77736d] transition hover:text-[#191816]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">Hoje</span>
+          </button>
+
+          <div className="min-w-0 flex-1 px-3 text-center">
+            <div className="text-[10px] uppercase tracking-[.14em] text-[#a29b93]">
+              {question.subject} · {index + 1} de {plan.length}
+            </div>
+            <div className="mx-auto mt-2 h-px max-w-[320px] overflow-hidden bg-[#ddd8d1]">
+              <div className="h-full bg-[#191816] transition-all duration-500" style={{ width: `${progress}%` }} />
+            </div>
           </div>
+
+          <button
+            onClick={toggleTeacherVoice}
+            disabled={!speechOutputSupported}
+            className={`flex items-center gap-2 text-sm transition disabled:opacity-30 ${teacherVoiceEnabled ? 'text-[#191816]' : 'text-[#8d867e]'}`}
+          >
+            {teacherVoiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            <span className="hidden sm:inline">{teacherVoiceEnabled ? 'Voz ativa' : 'Ouvir'}</span>
+          </button>
         </div>
       </header>
 
-      <div className="mx-auto grid min-h-[calc(100dvh-61px)] max-w-6xl gap-8 px-5 py-8 lg:grid-cols-[1fr_320px] lg:py-12">
-        <section className="flex min-h-[620px] flex-col rounded-[28px] bg-[#f8f6f2] p-6 text-[#1c1a18] md:p-10">
-          <div className="mb-8 flex items-center justify-between gap-6">
-            <span className="text-xs uppercase tracking-[.14em] text-[#8a857e]">{question.subject} · {question.conceptLabel}</span>
-            <div className="flex gap-1">{plan.map((_, itemIndex) => <span key={itemIndex} className={`h-1.5 w-8 rounded-full ${itemIndex <= index ? 'bg-[#1c1a18]' : 'bg-[#ded9d2]'}`} />)}</div>
+      <div className="mx-auto grid max-w-[1160px] gap-10 px-5 py-10 md:px-8 md:py-14 lg:grid-cols-[190px_minmax(0,1fr)] lg:gap-14">
+        <aside className="lg:sticky lg:top-[110px] lg:h-fit">
+          <div className="flex items-center gap-3 lg:block">
+            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#191816] text-white lg:h-14 lg:w-14">
+              <Sparkles className="h-4 w-4 lg:h-5 lg:w-5" />
+              {teacherVoiceEnabled && (
+                <span className="absolute -inset-1 rounded-full border border-[#8d867e]/35 animate-pulse" />
+              )}
+            </div>
+            <div className="lg:mt-5">
+              <div className="text-sm font-medium">Professora</div>
+              <div className="mt-0.5 text-xs text-[#99928a]">
+                {teacherVoiceEnabled ? 'falando quando precisar' : 'presente na sessão'}
+              </div>
+            </div>
           </div>
 
+          <div className="mt-5 hidden lg:block">
+            <div className="flex h-8 items-center gap-[3px]">
+              {[7, 13, 22, 10, 27, 16, 8, 20, 12, 24, 9].map((height, waveIndex) => (
+                <span
+                  key={waveIndex}
+                  className="w-[2px] rounded-full bg-[#b5aea6]"
+                  style={{ height }}
+                />
+              ))}
+            </div>
+            <p className="mt-5 text-xs leading-5 text-[#99928a]">
+              Primeiro você tenta. Ela entra quando existe algo útil para perguntar, corrigir ou destravar.
+            </p>
+            {scheduledMinutes ? (
+              <p className="mt-5 border-t border-[#e5e0da] pt-4 text-xs text-[#aaa39a]">
+                Sessão de {scheduledMinutes} min
+              </p>
+            ) : null}
+          </div>
+        </aside>
+
+        <section className="min-h-[650px] max-w-[820px]">
           {stage === 'question' && (
             <div className="fade-in">
-              <p className="mb-5 text-sm text-[#77716a]">{question.openingLine ?? 'Sem teoria primeiro. Tente usar o que você já tem.'}</p>
-              <h1 className="serif max-w-4xl text-3xl leading-tight md:text-4xl">{question.prompt}</h1>
-              <div className="mt-9 grid gap-3">
+              <p className="text-sm leading-6 text-[#8d867e]">
+                {question.openingLine ?? 'Sem explicação primeiro. Quero ver onde sua cabeça vai.'}
+              </p>
+              <h1 className="serif mt-5 text-[clamp(2.25rem,5vw,4.6rem)] leading-[1.02] tracking-[-.035em]">
+                {question.prompt}
+              </h1>
+
+              <div className="mt-10 border-t border-[#dcd6cf]">
                 {question.options.map((option) => (
-                  <button key={option.id} onClick={() => choose(option.id)} className="group flex items-start gap-4 rounded-2xl border border-[#ded9d2] bg-white p-5 text-left transition hover:-translate-y-[1px] hover:border-[#918b83]">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d6d1ca] text-sm">{option.id}</span>
-                    <span className="pt-1 text-sm leading-6 text-[#46413c]">{option.text}</span>
+                  <button
+                    key={option.id}
+                    onClick={() => choose(option.id)}
+                    className="group grid w-full grid-cols-[38px_1fr_20px] items-start gap-4 border-b border-[#e5e0da] py-5 text-left transition md:grid-cols-[48px_1fr_24px] md:py-6"
+                  >
+                    <span className="pt-0.5 text-sm text-[#9b948c] transition group-hover:text-[#191816]">{option.id}</span>
+                    <span className="text-base leading-7 text-[#4f4a44] transition group-hover:text-[#191816] md:text-lg md:leading-8">{option.text}</span>
+                    <ArrowRight className="mt-1 h-4 w-4 -translate-x-1 text-[#c2bbb3] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
                   </button>
                 ))}
               </div>
@@ -251,101 +338,167 @@ export default function SessionPage() {
           )}
 
           {stage === 'why' && (
-            <div className="fade-in flex flex-1 flex-col">
-              <p className="text-sm text-[#77716a]">Você marcou {selected}.</p>
-              <h1 className="serif mt-3 text-4xl md:text-5xl">Por quê?</h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-[#77716a]">Não precisa escrever bonito. Queremos entender o caminho que te levou até essa alternativa.</p>
-              <textarea value={reasoning} onChange={(event) => setReasoning(event.target.value)} placeholder="Eu escolhi essa porque..." className="mt-8 min-h-[170px] w-full rounded-2xl border border-[#ded9d2] bg-white p-5 text-base outline-none transition focus:border-[#8f8880]" />
-              <div className="mt-4 flex flex-wrap gap-3">
-                <button type="button" onClick={toggleListening} disabled={!speechInputSupported} className={`flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm transition disabled:opacity-40 ${listening ? 'border-[#1c1a18] bg-[#1c1a18] text-white' : 'border-[#ded9d2] bg-white'}`}><Mic className="h-4 w-4" /> {listening ? 'Ouvindo…' : speechInputSupported ? 'Responder falando' : 'Voz indisponível'}</button>
-                <button type="button" className="flex items-center gap-2 rounded-full border border-[#ded9d2] bg-white px-4 py-2.5 text-sm"><PenLine className="h-4 w-4" /> Escrever</button>
+            <div className="fade-in flex min-h-[620px] flex-col">
+              <p className="text-sm text-[#8d867e]">Você marcou {selected}.</p>
+              <h1 className="serif mt-4 text-[clamp(3.6rem,8vw,7rem)] leading-[.9] tracking-[-.055em]">Por quê?</h1>
+              <p className="mt-7 max-w-xl text-base leading-7 text-[#77736d]">
+                Não precisa escrever bonito. Explique como se estivesse tentando convencer alguém de que sua alternativa faz sentido.
+              </p>
+
+              <div className="mt-10 border-b border-[#bfb8b0] pb-4">
+                <textarea
+                  value={reasoning}
+                  onChange={(event) => setReasoning(event.target.value)}
+                  placeholder="Eu escolhi essa porque…"
+                  className="min-h-[155px] w-full resize-none bg-transparent text-xl leading-8 outline-none placeholder:text-[#bbb4ac] md:text-2xl md:leading-9"
+                />
               </div>
-              {listening && <p className="mt-3 text-xs text-[#8a847e]">Fale normalmente. A transcrição aparece no campo acima.</p>}
-              <div className="mt-auto flex justify-end pt-8">
-                <button onClick={submitReasoning} disabled={!reasoning.trim()} className="flex items-center gap-2 rounded-full bg-[#1c1a18] px-6 py-3 text-sm text-white disabled:opacity-30">Continuar <ArrowRight className="h-4 w-4" /></button>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  disabled={!speechInputSupported}
+                  className={`flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm transition disabled:opacity-35 ${listening ? 'border-[#191816] bg-[#191816] text-white' : 'border-[#d7d1ca] bg-white text-[#625d56]'}`}
+                >
+                  <Mic className="h-4 w-4" />
+                  {listening ? 'Estou ouvindo…' : speechInputSupported ? 'Responder falando' : 'Voz indisponível'}
+                </button>
+                <button
+                  onClick={submitReasoning}
+                  disabled={!reasoning.trim()}
+                  className="group flex items-center gap-3 rounded-full bg-[#191816] px-6 py-3.5 text-sm font-medium text-white transition disabled:opacity-25"
+                >
+                  Continuar <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+                </button>
               </div>
+              {listening && <p className="mt-3 text-xs text-[#99928a]">Pode falar normalmente. A transcrição aparece acima.</p>}
             </div>
           )}
 
           {stage === 'feedback' && (
-            <div className="fade-in flex flex-1 flex-col justify-center">
-              <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-[#eee2d7]"><Sparkles className="h-5 w-5" /></div>
-              <p className="text-sm text-[#77716a]">Professora</p>
-              <h1 className="serif mt-3 max-w-3xl text-4xl leading-tight md:text-5xl">{signalCopy[signal]}</h1>
-              <p className="mt-6 max-w-2xl text-base leading-7 text-[#625c56]">{hintsUsed === 0 ? question.nudge : question.secondNudge}</p>
-              <div className="mt-8 flex flex-wrap gap-3">
+            <div className="fade-in flex min-h-[620px] flex-col justify-center">
+              <div className="flex items-center gap-3 text-sm text-[#8d867e]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#191816] text-white"><Sparkles className="h-3.5 w-3.5" /></span>
+                Professora
+              </div>
+
+              <h1 className="serif mt-8 max-w-4xl text-[clamp(2.8rem,6vw,5.5rem)] leading-[.98] tracking-[-.045em]">
+                {signalCopy[signal]}
+              </h1>
+              <p className="mt-8 max-w-2xl text-lg leading-8 text-[#625d56]">
+                {hintsUsed === 0 ? question.nudge : question.secondNudge}
+              </p>
+
+              <div className="mt-10 flex flex-wrap gap-3">
                 {hintsUsed < 2 && (
-                  <button onClick={() => setHintsUsed((value) => value + 1)} className="flex items-center gap-2 rounded-full border border-[#d7d1ca] bg-white px-5 py-3 text-sm"><Lightbulb className="h-4 w-4" /> {hintsUsed === 0 ? 'Quero uma pista' : 'Mais uma pista'}</button>
+                  <button
+                    onClick={() => setHintsUsed((value) => value + 1)}
+                    className="flex items-center gap-2 rounded-full border border-[#d7d1ca] bg-white px-5 py-3 text-sm text-[#625d56]"
+                  >
+                    <Lightbulb className="h-4 w-4" />
+                    {hintsUsed === 0 ? 'Me dá uma pista' : 'Mais uma pista'}
+                  </button>
                 )}
-                <button onClick={commitAttemptAndExplain} className="rounded-full bg-[#1c1a18] px-5 py-3 text-sm text-white">Ver a lógica completa</button>
+                <button
+                  onClick={commitAttemptAndExplain}
+                  className="flex items-center gap-3 rounded-full bg-[#191816] px-5 py-3 text-sm text-white"
+                >
+                  Entender a lógica <ArrowRight className="h-4 w-4" />
+                </button>
               </div>
             </div>
           )}
 
           {stage === 'explain' && (
-            <div className="fade-in">
-              <p className="text-sm text-[#77716a]">O que precisa ficar.</p>
-              <h1 className="serif mt-3 text-4xl md:text-5xl">{correct ? 'Você marcou a melhor alternativa.' : `A melhor alternativa era ${question.correctOption}.`}</h1>
-              {selectedOption && !correct && <p className="mt-5 max-w-3xl text-sm leading-6 text-[#746e67]">Você marcou {selectedOption.id}: {selectedOption.explanation}</p>}
-              <div className="mt-8 space-y-5 text-sm leading-7 text-[#5e5852]">
-                <p><strong className="text-[#1c1a18]">Regra:</strong> {question.takeaway}</p>
+            <div className="fade-in pb-10">
+              <p className="text-sm text-[#8d867e]">Agora sim: a regra.</p>
+              <h1 className="serif mt-4 max-w-3xl text-[clamp(2.8rem,6vw,5.1rem)] leading-[.98] tracking-[-.045em]">
+                {correct ? 'Você marcou a melhor alternativa.' : `A melhor alternativa era ${question.correctOption}.`}
+              </h1>
+
+              {selectedOption && !correct && (
+                <p className="mt-7 max-w-2xl text-base leading-7 text-[#77736d]">
+                  Você marcou {selectedOption.id}. {selectedOption.explanation}
+                </p>
+              )}
+
+              <div className="mt-10 border-y border-[#dcd6cf]">
+                <div className="grid gap-3 py-6 md:grid-cols-[125px_1fr]">
+                  <div className="text-xs uppercase tracking-[.12em] text-[#99928a]">Guarde isso</div>
+                  <p className="text-base leading-7 text-[#4f4a44]">{question.takeaway}</p>
+                </div>
+
                 {question.options.map((option) => (
-                  <p key={option.id}><strong className="text-[#1c1a18]">{option.id}:</strong> {option.explanation}</p>
+                  <div key={option.id} className="grid gap-3 border-t border-[#e8e3dd] py-5 md:grid-cols-[125px_1fr]">
+                    <div className="text-sm text-[#8d867e]">Alternativa {option.id}</div>
+                    <p className="text-sm leading-6 text-[#625d56]">{option.explanation}</p>
+                  </div>
                 ))}
               </div>
-              <div className="mt-8 rounded-2xl bg-[#eee2d7] p-5">
-                <div className="text-xs uppercase tracking-[.12em] text-[#7f7064]">Pegadinha da FGV</div>
-                <p className="mt-2 text-sm leading-6">{question.fgvPattern}</p>
-              </div>
-              {question.vade && (
-                <div className="mt-5 rounded-2xl border border-[#ded9d2] p-5">
-                  <div className="text-xs uppercase tracking-[.12em] text-[#837d75]">Vade Mecum · {question.vade.article}</div>
-                  <p className="mt-2 text-sm">{question.vade.instruction}</p>
+
+              <div className="mt-10 grid gap-8 border-b border-[#dcd6cf] pb-10 md:grid-cols-2">
+                <div>
+                  <div className="text-xs uppercase tracking-[.12em] text-[#9b7e69]">Como a FGV tentou te pegar</div>
+                  <p className="mt-4 text-base leading-7 text-[#5b5149]">{question.fgvPattern}</p>
                 </div>
-              )}
+                {question.vade ? (
+                  <div>
+                    <div className="text-xs uppercase tracking-[.12em] text-[#8d867e]">No Vade Mecum · {question.vade.article}</div>
+                    <p className="mt-4 text-base leading-7 text-[#625d56]">{question.vade.instruction}</p>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-xs uppercase tracking-[.12em] text-[#8d867e]">Sem marcação agora</div>
+                    <p className="mt-4 text-sm leading-6 text-[#99928a]">Nem toda questão precisa virar marca-texto. O Vade só entra quando realmente ajuda.</p>
+                  </div>
+                )}
+              </div>
+
               <div className="mt-8 flex justify-end">
-                <button onClick={nextQuestion} className="flex items-center gap-2 rounded-full bg-[#1c1a18] px-6 py-3 text-sm text-white">{index === plan.length - 1 ? 'Fechar sessão' : 'Continuar'} <ArrowRight className="h-4 w-4" /></button>
+                <button
+                  onClick={nextQuestion}
+                  className="group flex items-center gap-3 rounded-full bg-[#191816] px-6 py-3.5 text-sm text-white"
+                >
+                  {index === plan.length - 1 ? 'Fechar a sessão' : 'Próxima'}
+                  <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+                </button>
               </div>
             </div>
           )}
 
           {stage === 'materials' && (
-            <div className="fade-in flex flex-1 flex-col">
-              <p className="text-sm text-[#77716a]">Sessão concluída.</p>
-              <h1 className="serif mt-3 max-w-3xl text-4xl leading-tight md:text-5xl">A explicação termina. A memória não.</h1>
-              <p className="mt-5 max-w-2xl text-sm leading-6 text-[#77716a]">O que aconteceu aqui já foi incorporado ao próximo percurso. Você não precisa decidir o que revisar.</p>
-              <div className="mt-10 grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-[#ded9d2] bg-white p-5"><FileText className="h-5 w-5" /><div className="mt-6 text-lg">Resumo da sessão</div><p className="mt-2 text-sm leading-6 text-[#77716a]">Regras essenciais das questões vistas hoje, sem transformar isso em apostila infinita.</p></div>
-                <div className="rounded-2xl border border-[#ded9d2] bg-white p-5"><BookOpenText className="h-5 w-5" /><div className="mt-6 text-lg">Mapa mental</div><p className="mt-2 text-sm leading-6 text-[#77716a]">Conexões entre conceitos, exceções e os padrões de alternativa que apareceram.</p></div>
+            <div className="fade-in flex min-h-[650px] flex-col justify-center pb-10">
+              <p className="text-sm text-[#8d867e]">Por hoje, é isso.</p>
+              <h1 className="serif mt-5 max-w-4xl text-[clamp(3.7rem,8vw,7.3rem)] leading-[.88] tracking-[-.055em]">
+                A explicação termina.<br /><span className="text-[#8d867e]">A memória não.</span>
+              </h1>
+              <p className="mt-8 max-w-xl text-base leading-7 text-[#77736d]">
+                O que aconteceu nesta sessão já entrou no próximo percurso. Você não precisa decidir o que revisar amanhã.
+              </p>
+
+              <div className="mt-12 border-y border-[#dcd6cf]">
+                <button onClick={() => router.push('/materiais')} className="group grid w-full grid-cols-[42px_1fr_auto] items-center gap-4 py-5 text-left">
+                  <FileText className="h-5 w-5 text-[#8d867e]" />
+                  <div><div className="text-lg">Resumo essencial</div><div className="mt-1 text-xs text-[#99928a]">Só o que vale levar desta sessão.</div></div>
+                  <ArrowRight className="h-4 w-4 text-[#aaa39a] transition group-hover:translate-x-1" />
+                </button>
+                <button onClick={() => router.push('/materiais')} className="group grid w-full grid-cols-[42px_1fr_auto] items-center gap-4 border-t border-[#e8e3dd] py-5 text-left">
+                  <BookOpenText className="h-5 w-5 text-[#8d867e]" />
+                  <div><div className="text-lg">Mapa + Vade Mecum</div><div className="mt-1 text-xs text-[#99928a]">Conexões, exceções e marcações desbloqueadas hoje.</div></div>
+                  <ArrowRight className="h-4 w-4 text-[#aaa39a] transition group-hover:translate-x-1" />
+                </button>
               </div>
-              <div className="mt-auto flex justify-end pt-10"><button onClick={completeSession} className="flex items-center gap-2 rounded-full bg-[#1c1a18] px-6 py-3 text-sm text-white">Voltar para hoje <ArrowRight className="h-4 w-4" /></button></div>
+
+              <button
+                onClick={completeSession}
+                className="group mt-10 flex w-fit items-center gap-3 rounded-full bg-[#191816] px-6 py-3.5 text-sm text-white"
+              >
+                Voltar para hoje <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+              </button>
             </div>
           )}
         </section>
-
-        <aside className="flex flex-col gap-4">
-          <div className="rounded-[24px] border border-white/10 bg-white/[.04] p-5">
-            <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10"><Sparkles className="h-4 w-4" /></div><div><div className="text-sm">Professora</div><div className="text-xs text-white/45">presente na sessão</div></div></div>
-            <div className="mt-6 h-14 rounded-full bg-white/[.06] p-2"><div className="flex h-full items-center justify-center gap-1">{[8,15,24,12,29,18,10,22,14,26,11].map((height, waveIndex)=><span key={waveIndex} className="w-1 rounded-full bg-white/45" style={{height}} />)}</div></div>
-            <button onClick={toggleTeacherVoice} disabled={!speechOutputSupported} className={`mt-5 flex w-full items-center justify-between rounded-full border px-4 py-2.5 text-sm transition disabled:opacity-35 ${teacherVoiceEnabled ? 'border-white/30 bg-white/10' : 'border-white/10'}`}>
-              <span className="flex items-center gap-2">{teacherVoiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}{teacherVoiceEnabled ? 'Voz ativa' : speechOutputSupported ? 'Ativar voz' : 'Voz indisponível'}</span>
-              <span className="text-xs text-white/35">beta local</span>
-            </button>
-            <p className="mt-4 text-sm leading-6 text-white/55">Nesta versão, a fala usa a voz do próprio navegador. Depois, este mesmo lugar recebe uma professora realtime com voz natural.</p>
-          </div>
-
-          <div className="rounded-[24px] border border-white/10 p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="text-xs uppercase tracking-[.12em] text-white/40">Sessão</div>
-                <div className="mt-3 text-2xl">{question.subject}</div>
-              </div>
-              {activity.minutes ? <div className="text-sm text-white/45">{formatMinutes(activity.minutes)}</div> : null}
-            </div>
-            <p className="mt-3 text-xs leading-5 text-white/40">Uma coisa de cada vez. O que vier depois já está sendo decidido sem interromper seu estudo.</p>
-            <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-white/70" style={{width: `${((index + 1) / plan.length) * 100}%`}} /></div>
-          </div>
-        </aside>
       </div>
     </main>
   );
