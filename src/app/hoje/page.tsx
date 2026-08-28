@@ -169,12 +169,12 @@ export default function HojePage() {
             <div className="mt-6 text-sm text-[var(--muted)]">Percurso</div>
             <div className="mt-1 text-lg">{learner?.attempts.length ? 'Recalculado pelas suas respostas' : 'Pronto para começar'}</div>
           </div>
-          <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
+          <button onClick={() => router.push('/praca')} className="rounded-2xl border border-[var(--line)] bg-white p-5 text-left transition hover:-translate-y-[1px] hover:shadow-[0_12px_35px_rgba(40,34,27,.05)]">
             <UsersRound className="h-5 w-5" />
             <div className="mt-6 text-sm text-[var(--muted)]">A Praça</div>
-            <div className="mt-1 text-lg">Presença ao vivo</div>
-            <div className="mt-2 text-xs text-[var(--muted)]">A contagem real entra com o backend — sem números inventados.</div>
-          </div>
+            <div className="mt-1 text-lg">Estudar junto, sem competir</div>
+            <div className="mt-2 text-xs text-[var(--muted)]">Conversa e dúvidas; presença real entra com o backend.</div>
+          </button>
         </section>
 
         <section className="mt-14 flex flex-col justify-between gap-6 border-t border-[var(--line)] py-8 md:flex-row md:items-center">
