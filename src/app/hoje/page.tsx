@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, BookOpenCheck, CalendarClock, Check, MessageCircleMore, Sparkles, UsersRound, X } from 'lucide-react';
+import { ArrowRight, Check, MessageCircleMore, Sparkles, X } from 'lucide-react';
 import { loadLearnerState } from '@/features/adaptive/engine';
 import type { LearnerState } from '@/features/adaptive/types';
+import { loadMockSession } from '@/features/auth/mock-auth';
 import { getCalibrationReadiness } from '@/features/calibration/engine';
 import {
   ensureStudyPlan,
@@ -25,11 +26,19 @@ function formatMinutes(value: number) {
   return minutes ? `${hours}h ${minutes}min` : `${hours}h`;
 }
 
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Bom dia';
+  if (hour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
 export default function HojePage() {
   const router = useRouter();
   const [learner, setLearner] = useState<LearnerState | null>(null);
   const [profile, setProfile] = useState<StudyProfile | null>(null);
   const [plan, setPlan] = useState<StudyPlan | null>(null);
+  const [studentName, setStudentName] = useState('');
   const [completed, setCompleted] = useState(false);
   const [reflowOpen, setReflowOpen] = useState(false);
   const [tutorOpen, setTutorOpen] = useState(false);
@@ -42,6 +51,9 @@ export default function HojePage() {
       router.replace('/onboarding');
       return;
     }
+
+    const session = loadMockSession();
+    setStudentName(session?.name?.split(' ')[0] ?? '');
 
     const completedNow = new URLSearchParams(window.location.search).get('completed') === '1';
     let currentPlan = ensureStudyPlan(storedProfile);
@@ -87,154 +99,125 @@ export default function HojePage() {
     if (!plan || !today || availableToday === null) return;
 
     const before = today.plannedMinutes;
-    let updated: StudyPlan;
-    if (availableToday === 0) {
-      updated = reflowMissedDay(plan, today.date);
-    } else {
-      updated = rescheduleWithMinutes(plan, today.date, availableToday);
-    }
+    const updated = availableToday === 0
+      ? reflowMissedDay(plan, today.date)
+      : rescheduleWithMinutes(plan, today.date, availableToday);
 
     const moved = Math.max(0, before - availableToday);
     setPlan(updated);
     setReflowOpen(false);
     setPlanNotice(
       moved > 0
-        ? `Tudo certo. ${formatMinutes(moved)} foram redistribuídos sem apagar o que ainda precisa ser aprendido.`
-        : 'Seu dia foi atualizado. O percurso continua cuidando do restante.',
+        ? `${formatMinutes(moved)} foram redistribuídos. Nada foi perdido.`
+        : 'Seu dia mudou. O caminho mudou junto.',
     );
   }
 
-  const studyDay = today?.status === 'planned' && today.plannedMinutes > 0 ? today : nextWindow;
   const hasStudyNow = today?.status === 'planned' && today.plannedMinutes > 0 && !completed;
+  const studyDay = hasStudyNow ? today : nextWindow;
 
   return (
-    <main className="oab-shell px-4 py-5 md:py-8">
-      <div className="oab-container">
-        <header className="flex items-center justify-between py-3">
-          <div className="serif text-xl">direito fácil</div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => router.push('/materiais')} className="rounded-full border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)]">Materiais</button>
-            <button onClick={() => router.push('/perfil')} className="rounded-full border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)]">Perfil</button>
-          </div>
+    <main className="min-h-dvh bg-[#faf9f7] text-[#191816]">
+      <div className="mx-auto w-full max-w-[1180px] px-5 pb-24 pt-5 md:px-8 md:pt-7">
+        <header className="flex items-center justify-between border-b border-[#e8e4de] pb-5">
+          <button onClick={() => router.push('/hoje')} className="serif text-xl">direito fácil</button>
+          <nav className="flex items-center gap-5 text-sm text-[#77736d]">
+            <button onClick={() => router.push('/materiais')} className="hidden transition hover:text-[#191816] sm:block">Materiais</button>
+            <button onClick={() => router.push('/praca')} className="hidden transition hover:text-[#191816] sm:block">A Praça</button>
+            <button onClick={() => router.push('/perfil')} className="flex h-9 w-9 items-center justify-center rounded-full border border-[#ddd8d1] bg-white text-xs text-[#625d56]">{studentName ? studentName[0]?.toUpperCase() : 'A'}</button>
+          </nav>
         </header>
 
         {(completed || planNotice) && (
-          <div className="mt-8 flex items-start justify-between gap-4 rounded-2xl border border-[#d9d2ca] bg-[#eee2d7] px-5 py-4 text-sm text-[#5f574f]">
-            <span>{planNotice ?? 'Sessão concluída. Seu próximo caminho já foi ajustado com o que aconteceu hoje.'}</span>
-            {planNotice && <button onClick={() => setPlanNotice(null)} aria-label="Fechar aviso"><X className="h-4 w-4" /></button>}
+          <div className="mt-6 flex items-center justify-between gap-5 border-b border-[#ded9d2] pb-5 text-sm text-[#6d655d]">
+            <span>{planNotice ?? 'Terminamos por hoje. O que aconteceu na sessão já mudou o próximo percurso.'}</span>
+            {planNotice && <button onClick={() => setPlanNotice(null)} aria-label="Fechar"><X className="h-4 w-4" /></button>}
           </div>
         )}
 
-        <section className="mt-12 grid gap-12 lg:grid-cols-[1.25fr_.75fr] lg:items-end">
-          <div>
-            <p className="text-sm text-[var(--muted)]">Boa noite, Ana.</p>
-            <h1 className="serif mt-3 max-w-3xl text-5xl leading-[1.02] md:text-7xl">Hoje você só precisa aparecer.</h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-[var(--muted)]">O sistema cuida da ordem. Sua rotina define o espaço; o que você demonstra durante o estudo redefine o conteúdo.</p>
-            {daysUntilExam !== null && <p className="mt-5 text-sm text-[var(--muted)]">Faltam {daysUntilExam} dias para a sua prova.</p>}
+        <section className="pb-14 pt-14 md:pb-20 md:pt-20">
+          <p className="text-sm text-[#77736d]">{greeting()}{studentName ? `, ${studentName}` : ''}{daysUntilExam !== null ? ` · ${daysUntilExam} dias até a prova` : ''}</p>
+          <h1 className="serif mt-5 max-w-5xl text-[clamp(4rem,10vw,8.6rem)] leading-[.88] tracking-[-.055em]">
+            {hasStudyNow ? <>Hoje,<br /><span className="text-[#8d867e]">{formatMinutes(today.plannedMinutes)}.</span></> : completed ? <>Por hoje,<br /><span className="text-[#8d867e]">feito.</span></> : <>Hoje,<br /><span className="text-[#8d867e]">sem pressa.</span></>}
+          </h1>
+          <p className="mt-8 max-w-xl text-base leading-7 text-[#77736d]">Você não precisa decidir matéria, aula ou revisão. Só começar. A ordem abaixo já leva em conta sua rotina e o que suas respostas vêm revelando.</p>
+        </section>
+
+        <section className="border-y border-[#ded9d2]">
+          <div className="flex items-center justify-between py-5 text-xs uppercase tracking-[.12em] text-[#99928a]">
+            <span>{hasStudyNow ? `Sua sessão · ${today.preferredStart}` : studyDay ? `Próxima sessão · ${studyDay.dayKey} ${studyDay.preferredStart}` : 'Seu caminho'}</span>
+            <span>{studyDay ? formatMinutes(studyDay.plannedMinutes) : 'nenhuma sessão pendente'}</span>
           </div>
 
-          <div className="rounded-[28px] border border-[var(--line)] bg-white p-6 shadow-[0_16px_60px_rgba(40,34,27,.05)]">
-            <div className="flex items-center justify-between text-sm text-[var(--muted)]">
-              <span>{hasStudyNow ? `Hoje · ${today?.preferredStart}` : studyDay ? `${studyDay.dayKey} · ${studyDay.preferredStart}` : 'Plano'}</span>
-              <span>{studyDay ? formatMinutes(studyDay.plannedMinutes) : 'sem sessão'}</span>
-            </div>
-
-            {studyDay?.blocks.length ? (
-              <div className="mt-6 space-y-4">
-                {studyDay.blocks.map((block, index) => (
-                  <div key={block.id}>
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <div>{block.subject ?? block.label}</div>
-                        <div className="mt-0.5 text-xs text-[var(--muted)]">{block.label}</div>
-                      </div>
-                      <span className="text-sm text-[var(--muted)]">{formatMinutes(block.minutes)}</span>
-                    </div>
-                    {index < studyDay.blocks.length - 1 && <div className="mt-4 h-px bg-[var(--line)]" />}
+          {studyDay?.blocks.length ? (
+            <div>
+              {studyDay.blocks.map((block, index) => (
+                <div key={block.id} className="grid grid-cols-[38px_1fr_auto] items-center gap-4 border-t border-[#ebe7e1] py-5 md:grid-cols-[55px_1fr_auto] md:py-6">
+                  <span className="text-xs tabular-nums text-[#aaa39a]">{String(index + 1).padStart(2, '0')}</span>
+                  <div>
+                    <div className="text-lg md:text-xl">{block.subject ?? block.label}</div>
+                    <div className="mt-1 text-xs text-[#908981]">{block.label}</div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-8 rounded-2xl bg-[var(--soft)] p-5 text-sm leading-6 text-[var(--muted)]">Hoje não existe sessão planejada. O curso não precisa ocupar todos os espaços da sua semana.</div>
-            )}
+                  <span className="text-sm tabular-nums text-[#77736d]">{formatMinutes(block.minutes)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="border-t border-[#ebe7e1] py-10 text-sm text-[#77736d]">Nenhuma sessão planejada agora. Descanso também faz parte do cronograma.</div>
+          )}
 
+          <div className="flex flex-col gap-4 border-t border-[#ded9d2] py-6 sm:flex-row sm:items-center sm:justify-between">
             {hasStudyNow ? (
-              <button onClick={() => router.push('/sessao/hoje')} className="mt-7 flex w-full items-center justify-between rounded-full bg-[var(--ink)] px-5 py-4 text-left text-sm font-medium text-white">
-                Continuar preparação <ArrowRight className="h-4 w-4" />
-              </button>
+              <button onClick={() => router.push('/sessao/hoje')} className="group flex w-full items-center justify-between rounded-full bg-[#191816] px-6 py-4 text-sm font-medium text-white sm:w-auto sm:min-w-[260px]">Começar <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></button>
             ) : completed ? (
-              <div className="mt-7 flex items-center gap-2 rounded-full bg-[var(--soft)] px-5 py-4 text-sm text-[var(--muted)]"><Check className="h-4 w-4" /> O estudo de hoje já foi feito.</div>
-            ) : null}
+              <div className="flex items-center gap-2 text-sm text-[#77736d]"><Check className="h-4 w-4" /> A sessão de hoje já foi concluída.</div>
+            ) : <span />}
+
+            {today && today.status !== 'done' && (
+              <button onClick={openReflow} className="text-left text-sm text-[#77736d] underline decoration-[#cfc8bf] underline-offset-4 transition hover:text-[#191816]">Aconteceu vida? Reorganizar hoje</button>
+            )}
           </div>
         </section>
 
         {calibration?.ready && (
-          <section className="mt-12 rounded-[28px] bg-[#171614] p-6 text-[#f8f6f2] md:flex md:items-end md:justify-between md:gap-10 md:p-8">
-            <div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10"><Sparkles className="h-4 w-4" /></div>
-              <p className="mt-6 text-sm text-white/45">O sistema abriu uma nova etapa.</p>
-              <h2 className="serif mt-2 max-w-2xl text-3xl leading-tight md:text-4xl">Você está pronta para uma calibração.</h2>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-white/55">Ela apareceu porque já existe evidência suficiente para o resultado ensinar alguma coisa ao seu percurso.</p>
+          <section className="mt-16 overflow-hidden rounded-[32px] bg-[#171614] px-6 py-8 text-[#f8f6f2] md:px-10 md:py-10">
+            <div className="grid gap-10 md:grid-cols-[1fr_auto] md:items-end">
+              <div>
+                <Sparkles className="h-5 w-5 text-white/55" />
+                <p className="mt-8 text-sm text-white/40">Uma etapa apareceu no seu caminho.</p>
+                <h2 className="serif mt-3 max-w-3xl text-4xl leading-[1.05] md:text-6xl">Agora vale a pena medir sem ajuda.</h2>
+                <p className="mt-5 max-w-2xl text-sm leading-6 text-white/50">A calibração só aparece quando já existe informação suficiente para o resultado realmente mudar o que vem depois.</p>
+              </div>
+              <button onClick={() => router.push('/calibracao')} className="flex items-center gap-3 rounded-full bg-[#f8f6f2] px-5 py-3 text-sm text-[#171614]">Calibrar <ArrowRight className="h-4 w-4" /></button>
             </div>
-            <button onClick={() => router.push('/calibracao')} className="mt-7 flex shrink-0 items-center gap-2 rounded-full bg-[#f8f6f2] px-5 py-3 text-sm text-[#171614] md:mt-0">Fazer calibração <ArrowRight className="h-4 w-4" /></button>
           </section>
         )}
 
-        <section className="mt-16 grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
-            <CalendarClock className="h-5 w-5" />
-            <div className="mt-6 text-sm text-[var(--muted)]">Próxima janela</div>
-            <div className="mt-1 text-lg">{nextWindow ? `${nextWindow.dayKey} · ${nextWindow.preferredStart}` : 'Plano se renova em breve'}</div>
-            {nextWindow?.carriedMinutes ? <div className="mt-2 text-xs text-[var(--muted)]">inclui {formatMinutes(nextWindow.carriedMinutes)} redistribuídos</div> : null}
-          </div>
-          <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
-            <BookOpenCheck className="h-5 w-5" />
-            <div className="mt-6 text-sm text-[var(--muted)]">Percurso</div>
-            <div className="mt-1 text-lg">{learner?.attempts.length ? 'Recalculado pelas suas respostas' : 'Pronto para começar'}</div>
-          </div>
-          <button onClick={() => router.push('/praca')} className="rounded-2xl border border-[var(--line)] bg-white p-5 text-left transition hover:-translate-y-[1px] hover:shadow-[0_12px_35px_rgba(40,34,27,.05)]">
-            <UsersRound className="h-5 w-5" />
-            <div className="mt-6 text-sm text-[var(--muted)]">A Praça</div>
-            <div className="mt-1 text-lg">Estudar junto, sem competir</div>
-            <div className="mt-2 text-xs text-[var(--muted)]">Conversa e dúvidas; presença real entra com o backend.</div>
-          </button>
+        <section className="mt-16 grid gap-8 border-t border-[#ded9d2] pt-7 text-sm md:grid-cols-3">
+          <div><div className="text-xs uppercase tracking-[.1em] text-[#aaa39a]">Próxima janela</div><div className="mt-3 text-[#4d4944]">{nextWindow ? `${nextWindow.dayKey}, ${nextWindow.preferredStart} · ${formatMinutes(nextWindow.plannedMinutes)}` : 'O plano se renova em breve.'}</div>{nextWindow?.carriedMinutes ? <div className="mt-1 text-xs text-[#99928a]">inclui {formatMinutes(nextWindow.carriedMinutes)} redistribuídos</div> : null}</div>
+          <div><div className="text-xs uppercase tracking-[.1em] text-[#aaa39a]">Percurso</div><div className="mt-3 text-[#4d4944]">{learner?.attempts.length ? 'Mudou com suas respostas mais recentes.' : 'Pronto para começar a aprender com você.'}</div></div>
+          <button onClick={() => router.push('/praca')} className="text-left"><div className="text-xs uppercase tracking-[.1em] text-[#aaa39a]">A Praça</div><div className="mt-3 text-[#4d4944]">Estudar junto, sem ranking e sem competição. <span className="text-[#8d867e]">Abrir →</span></div></button>
         </section>
-
-        <section className="mt-14 flex flex-col justify-between gap-6 border-t border-[var(--line)] py-8 md:flex-row md:items-center">
-          <div>
-            <div className="text-sm font-medium">Aconteceu vida?</div>
-            <p className="mt-1 text-sm text-[var(--muted)]">Diga quanto realmente cabe hoje. O restante volta para o plano sem punição.</p>
-          </div>
-          <button onClick={openReflow} disabled={!today || today.status === 'done'} className="rounded-full border border-[var(--line)] bg-white px-5 py-3 text-sm disabled:opacity-40">Reorganizar meu dia</button>
-        </section>
-
-        <button onClick={openTutor} className="fixed bottom-5 right-5 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-[0_8px_30px_rgba(30,25,20,.12)] ring-1 ring-[var(--line)]" aria-label="Abrir tutor">
-          <MessageCircleMore className="h-5 w-5" />
-        </button>
       </div>
 
+      <button onClick={openTutor} className="fixed bottom-5 right-5 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-[#ded9d2] bg-white shadow-[0_12px_40px_rgba(30,25,20,.1)]" aria-label="Abrir tutor"><MessageCircleMore className="h-5 w-5" /></button>
+
       {reflowOpen && today && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/20 p-4 backdrop-blur-[2px] sm:items-center">
-          <div className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-2xl md:p-8">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/20 p-4 backdrop-blur-[3px] sm:items-center">
+          <div className="w-full max-w-lg rounded-[30px] bg-[#faf9f7] p-6 shadow-2xl md:p-8">
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-[var(--muted)]">Sem culpa. Só precisamos recalcular.</p>
-                <h2 className="serif mt-2 text-3xl">Quanto cabe hoje de verdade?</h2>
-              </div>
-              <button onClick={() => setReflowOpen(false)} className="rounded-full border border-[var(--line)] p-2" aria-label="Fechar"><X className="h-4 w-4" /></button>
+              <div><p className="text-sm text-[#77736d]">Sem culpa. Só recalculamos.</p><h2 className="serif mt-2 text-4xl leading-tight">Quanto cabe hoje de verdade?</h2></div>
+              <button onClick={() => setReflowOpen(false)} className="rounded-full border border-[#ded9d2] p-2" aria-label="Fechar"><X className="h-4 w-4" /></button>
             </div>
 
-            <div className="mt-7 grid grid-cols-3 gap-2 sm:grid-cols-5">
+            <div className="mt-8 flex flex-wrap gap-2">
               {[0, 15, 25, 30, 45, 60, 90, 120].map((value) => (
-                <button key={value} onClick={() => setAvailableToday(value)} className={`rounded-2xl border px-3 py-3 text-sm transition ${availableToday === value ? 'border-[var(--ink)] bg-[var(--ink)] text-white' : 'border-[var(--line)]'}`}>
-                  {value === 0 ? 'Hoje não dá' : formatMinutes(value)}
-                </button>
+                <button key={value} onClick={() => setAvailableToday(value)} className={`rounded-full border px-4 py-2.5 text-sm transition ${availableToday === value ? 'border-[#191816] bg-[#191816] text-white' : 'border-[#ded9d2] bg-white text-[#625d56]'}`}>{value === 0 ? 'Hoje não dá' : formatMinutes(value)}</button>
               ))}
             </div>
 
-            <p className="mt-6 text-sm leading-6 text-[var(--muted)]">Hoje estavam planejados {formatMinutes(today.plannedMinutes)}. Se você reduzir, o motor espalha o que faltar pelas próximas janelas em pequenas doses, em vez de jogar tudo amanhã.</p>
-
-            <button onClick={applyReflow} className="mt-7 flex w-full items-center justify-between rounded-full bg-[var(--ink)] px-5 py-4 text-sm font-medium text-white">Atualizar meu caminho <ArrowRight className="h-4 w-4" /></button>
+            <p className="mt-7 text-sm leading-6 text-[#77736d]">Hoje estavam planejados {formatMinutes(today.plannedMinutes)}. O que não couber será espalhado pelas próximas janelas em doses possíveis, não despejado amanhã.</p>
+            <button onClick={applyReflow} className="mt-7 flex w-full items-center justify-between rounded-full bg-[#191816] px-5 py-4 text-sm font-medium text-white">Atualizar meu caminho <ArrowRight className="h-4 w-4" /></button>
           </div>
         </div>
       )}
