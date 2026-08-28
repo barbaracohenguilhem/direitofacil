@@ -14,6 +14,7 @@ import {
   rescheduleWithMinutes,
 } from '@/features/planning/engine';
 import type { StudyDay, StudyPlan, StudyProfile } from '@/features/planning/types';
+import { SocraticTutor } from '@/features/tutor/socratic-tutor';
 
 function formatMinutes(value: number) {
   if (value < 60) return `${value} min`;
@@ -29,6 +30,7 @@ export default function HojePage() {
   const [plan, setPlan] = useState<StudyPlan | null>(null);
   const [completed, setCompleted] = useState(false);
   const [reflowOpen, setReflowOpen] = useState(false);
+  const [tutorOpen, setTutorOpen] = useState(false);
   const [availableToday, setAvailableToday] = useState<number | null>(null);
   const [planNotice, setPlanNotice] = useState<string | null>(null);
 
@@ -183,7 +185,7 @@ export default function HojePage() {
           <button onClick={openReflow} disabled={!today || today.status === 'done'} className="rounded-full border border-[var(--line)] bg-white px-5 py-3 text-sm disabled:opacity-40">Reorganizar meu dia</button>
         </section>
 
-        <button className="fixed bottom-5 right-5 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-[0_8px_30px_rgba(30,25,20,.12)] ring-1 ring-[var(--line)]" aria-label="Abrir tutor">
+        <button onClick={() => setTutorOpen(true)} className="fixed bottom-5 right-5 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-[0_8px_30px_rgba(30,25,20,.12)] ring-1 ring-[var(--line)]" aria-label="Abrir tutor">
           <MessageCircleMore className="h-5 w-5" />
         </button>
       </div>
@@ -213,6 +215,8 @@ export default function HojePage() {
           </div>
         </div>
       )}
+
+      <SocraticTutor open={tutorOpen} onClose={() => setTutorOpen(false)} />
     </main>
   );
 }
