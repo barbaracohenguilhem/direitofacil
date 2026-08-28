@@ -180,9 +180,22 @@ export function reflowMissedDay(plan: StudyPlan, date: string): StudyPlan {
 }
 
 export function markDayDone(plan: StudyPlan, date: string): StudyPlan {
+  const days = plan.days.map((day) => {
+    if (day.date === date) return { ...day, status: 'done' as const };
+    if (day.date > date && day.status === 'planned' && day.plannedMinutes > 0) {
+      return {
+        ...day,
+        // Horário e carga permanecem; só o conteúdo é recalculado com a evidência recém-coletada.
+        blocks: composeBlocks(day.plannedMinutes),
+      };
+    }
+    return day;
+  });
+
   const updated = {
     ...plan,
-    days: plan.days.map((day) => (day.date === date ? { ...day, status: 'done' as const } : day)),
+    generatedAt: new Date().toISOString(),
+    days,
   };
   saveStudyPlan(updated);
   return updated;
