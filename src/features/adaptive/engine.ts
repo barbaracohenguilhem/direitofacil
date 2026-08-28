@@ -1,3 +1,4 @@
+import { trackLearningEvent } from '@/features/telemetry/engine';
 import { QUESTION_BANK } from './question-bank';
 import type { Attempt, LearnerState, PlannedActivity, ReasoningSignal } from './types';
 
@@ -64,6 +65,26 @@ export function applyAttempt(state: LearnerState, attempt: Attempt): LearnerStat
   const reviewDays = nextStrength >= 0.8 ? 7 : nextStrength >= 0.6 ? 4 : nextStrength >= 0.4 ? 2 : 1;
   const nextReview = new Date(now);
   nextReview.setDate(now.getDate() + reviewDays);
+
+  trackLearningEvent('question_answered', {
+    questionId: attempt.questionId,
+    subject: attempt.subject,
+    conceptId: attempt.conceptId,
+    correct: attempt.correct,
+    reasoningSignal: attempt.reasoningSignal,
+    responseMs: attempt.responseMs,
+    hintsUsed: attempt.hintsUsed,
+    previousStrength: Number(previous.strength.toFixed(3)),
+    nextStrength: Number(nextStrength.toFixed(3)),
+  });
+
+  if (attempt.hintsUsed > 0) {
+    trackLearningEvent('hint_used', {
+      questionId: attempt.questionId,
+      conceptId: attempt.conceptId,
+      count: attempt.hintsUsed,
+    });
+  }
 
   return {
     ...state,
@@ -146,5 +167,9 @@ export function buildNextActivities(state: LearnerState, limit = 5): PlannedActi
 export function finishSession(state: LearnerState): LearnerState {
   const updated = { ...state, completedSessions: state.completedSessions + 1 };
   saveLearnerState(updated);
+  trackLearningEvent('session_completed', {
+    completedSessions: updated.completedSessions,
+    attemptsRecorded: state.attempts.length,
+  });
   return updated;
 }
