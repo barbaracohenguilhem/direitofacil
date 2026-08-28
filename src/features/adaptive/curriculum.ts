@@ -15,7 +15,13 @@ const STORAGE_KEY = 'direitofacil.curriculum.v1';
 
 // O outline oficial escolhido para o produto agora é a fonte-base do currículo runtime.
 // O aluno nunca vê esta árvore; ela existe para planejamento, pré-requisitos e adaptação.
-export const CURRICULUM: CurriculumConcept[] = OAB_OUTLINE_CURRICULUM;
+// Um título do PDF foi quebrado por mudança de linha na extração; normalizamos aqui sem
+// alterar o identificador estável já usado pela branch.
+export const CURRICULUM: CurriculumConcept[] = OAB_OUTLINE_CURRICULUM.map((concept) =>
+  concept.id === 'm16-t06-crimes-contra-a-administracao-fe-publica-e-outros-de-al'
+    ? { ...concept, label: 'Crimes contra a Administração, fé pública e outros de alta incidência' }
+    : concept,
+);
 
 function normalizeConcept(concept: CurriculumConcept): CurriculumConcept {
   return {
