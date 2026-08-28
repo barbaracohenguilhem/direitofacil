@@ -1,3 +1,5 @@
+import type { PlannedActivity } from '@/features/adaptive/types';
+
 export type DayKey = 'Seg' | 'Ter' | 'Qua' | 'Qui' | 'Sex' | 'Sáb' | 'Dom';
 
 export type DailyAvailability = {
@@ -25,6 +27,8 @@ export type StudyProfile = {
 
 export type StudyBlock = {
   id: string;
+  questionId?: string;
+  adaptiveReason?: PlannedActivity['reason'];
   label: string;
   subject?: string;
   minutes: number;
