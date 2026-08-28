@@ -1,5 +1,5 @@
 import type { AdaptiveQuestion, LearnerState } from '@/features/adaptive/types';
-import { getRuntimeQuestion, getRuntimeQuestionBank } from '@/features/content/repository';
+import { getAssessmentQuestion, getAssessmentQuestionBank } from '@/features/content/repository';
 import { trackLearningEvent } from '@/features/telemetry/engine';
 
 export type CalibrationReadiness = {
@@ -41,7 +41,7 @@ export function buildCalibrationQuestions(state: LearnerState, requestedSize: nu
   const observedConceptIds = new Set(Object.keys(state.concepts));
   const recentQuestionIds = new Set(state.attempts.slice(-4).map((attempt) => attempt.questionId));
 
-  const ranked = getRuntimeQuestionBank()
+  const ranked = getAssessmentQuestionBank()
     .filter((question) => observedConceptIds.has(question.conceptId))
     .map((question) => {
       const concept = state.concepts[question.conceptId];
@@ -88,7 +88,7 @@ export function applyCalibrationEvidence(state: LearnerState, evidence: Calibrat
   const now = new Date();
 
   for (const item of evidence) {
-    const question = getRuntimeQuestion(item.questionId);
+    const question = getAssessmentQuestion(item.questionId);
     if (!question) continue;
 
     const previous = concepts[question.conceptId] ?? {
