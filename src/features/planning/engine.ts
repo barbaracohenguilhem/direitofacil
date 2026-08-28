@@ -19,6 +19,39 @@ function dayKeyFor(date: Date): DayKey {
   return DAY_KEYS[date.getDay()];
 }
 
+function timeToMinutes(value: string) {
+  const [hours = '0', minutes = '0'] = value.split(':');
+  return Number(hours) * 60 + Number(minutes);
+}
+
+function minutesToTime(value: number) {
+  const normalized = Math.max(0, Math.min(value, 23 * 60 + 45));
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function resolvePreferredStart(
+  profile: StudyProfile,
+  dayKey: DayKey,
+  preferredStart: string,
+  studyMinutes: number,
+) {
+  let start = timeToMinutes(preferredStart);
+  const relevant = profile.commitments
+    .filter((commitment) => commitment.days.includes(dayKey))
+    .map((commitment) => ({ start: timeToMinutes(commitment.start), end: timeToMinutes(commitment.end) }))
+    .sort((a, b) => a.start - b.start);
+
+  for (const commitment of relevant) {
+    const studyEnd = start + Math.min(studyMinutes, profile.sessionMinutes);
+    const overlaps = start < commitment.end && studyEnd > commitment.start;
+    if (overlaps) start = commitment.end + 15;
+  }
+
+  return minutesToTime(start);
+}
+
 export function saveStudyProfile(profile: StudyProfile) {
   if (typeof window !== 'undefined') {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
@@ -92,6 +125,62 @@ function composeBlocks(minutes: number): StudyBlock[] {
   });
 }
 
+function distributeBacklog(plan: StudyPlan, backlog: number, fromDate: string): StudyPlan {
+  if (backlog <= 0) return { ...plan, totalCarriedMinutes: 0 };
+
+  let remaining = backlog;
+  const days = plan.days.map((day) => ({ ...day, blocks: [...day.blocks] }));
+
+  for (const day of days) {
+    if (remaining <= 0) break;
+    if (day.date < fromDate || day.status !== 'planned' || day.baseMinutes <= 0) continue;
+
+    const extraCapacity = Math.max(15, Math.floor(day.baseMinutes * 0.5));
+    const add = Math.min(extraCapacity, remaining);
+    day.carriedMinutes += add;
+    day.plannedMinutes += add;
+    day.blocks = composeBlocks(day.plannedMinutes);
+    remaining -= add;
+  }
+
+  return {
+    ...plan,
+    generatedAt: new Date().toISOString(),
+    days,
+    totalCarriedMinutes: remaining,
+  };
+}
+
+function reconcilePastMissedDays(plan: StudyPlan, today: string): StudyPlan {
+  let backlog = plan.totalCarriedMinutes;
+  let foundMissed = false;
+
+  const days = plan.days.map((day) => {
+    if (day.date < today && day.status === 'planned' && day.plannedMinutes > 0) {
+      backlog += day.plannedMinutes;
+      foundMissed = true;
+      return { ...day, status: 'missed' as const, plannedMinutes: 0, blocks: [] };
+    }
+    return { ...day, blocks: [...day.blocks] };
+  });
+
+  if (!foundMissed && backlog === plan.totalCarriedMinutes) return plan;
+
+  const reconciled = distributeBacklog({ ...plan, days, totalCarriedMinutes: 0 }, backlog, today);
+  saveStudyPlan(reconciled);
+
+  if (foundMissed) {
+    trackLearningEvent('schedule_reflowed', {
+      date: today,
+      automatic: true,
+      recoveredBacklogMinutes: backlog,
+      stillUnplacedMinutes: reconciled.totalCarriedMinutes,
+    });
+  }
+
+  return reconciled;
+}
+
 export function generateStudyPlan(profile: StudyProfile, start = new Date()): StudyPlan {
   const days: StudyDay[] = [];
 
@@ -102,11 +191,12 @@ export function generateStudyPlan(profile: StudyProfile, start = new Date()): St
     const dayKey = dayKeyFor(date);
     const availability = profile.availability.find((item) => item.day === dayKey);
     const baseMinutes = availability?.minutes ?? 0;
+    const rawStart = availability?.preferredStart ?? '19:00';
 
     days.push({
       date: localDateKey(date),
       dayKey,
-      preferredStart: availability?.preferredStart ?? '19:00',
+      preferredStart: resolvePreferredStart(profile, dayKey, rawStart, baseMinutes),
       baseMinutes,
       plannedMinutes: baseMinutes,
       carriedMinutes: 0,
@@ -129,10 +219,31 @@ export function generateStudyPlan(profile: StudyProfile, start = new Date()): St
 export function ensureStudyPlan(profile: StudyProfile): StudyPlan {
   const existing = loadStudyPlan();
   const today = localDateKey();
+
   if (existing && existing.examDate === profile.examDate && existing.days.some((day) => day.date === today)) {
-    return existing;
+    return reconcilePastMissedDays(existing, today);
   }
-  return generateStudyPlan(profile);
+
+  let outstanding = existing?.totalCarriedMinutes ?? 0;
+  if (existing && existing.examDate === profile.examDate) {
+    outstanding += existing.days
+      .filter((day) => day.status === 'planned' && day.plannedMinutes > 0)
+      .reduce((sum, day) => sum + day.plannedMinutes, 0);
+  }
+
+  const fresh = generateStudyPlan(profile);
+  if (outstanding <= 0) return fresh;
+
+  const carried = distributeBacklog(fresh, outstanding, today);
+  saveStudyPlan(carried);
+  trackLearningEvent('schedule_reflowed', {
+    date: today,
+    automatic: true,
+    crossedPlanWindow: true,
+    recoveredBacklogMinutes: outstanding,
+    stillUnplacedMinutes: carried.totalCarriedMinutes,
+  });
+  return carried;
 }
 
 export function reflowMissedDay(plan: StudyPlan, date: string): StudyPlan {
@@ -143,40 +254,21 @@ export function reflowMissedDay(plan: StudyPlan, date: string): StudyPlan {
   if (source.status !== 'planned' || source.plannedMinutes <= 0) return plan;
 
   const originalMinutes = source.plannedMinutes;
-  let remaining = source.plannedMinutes;
   const days = plan.days.map((day, i) => {
     if (i !== index) return { ...day, blocks: [...day.blocks] };
     return { ...day, status: 'missed' as const, plannedMinutes: 0, blocks: [] };
   });
 
-  for (let i = index + 1; i < days.length && remaining > 0; i += 1) {
-    const day = days[i];
-    if (day.status === 'unavailable' || day.baseMinutes <= 0) continue;
-
-    const extraCapacity = Math.max(15, Math.floor(day.baseMinutes * 0.5));
-    const add = Math.min(extraCapacity, remaining);
-    day.carriedMinutes += add;
-    day.plannedMinutes += add;
-    day.blocks = composeBlocks(day.plannedMinutes);
-    remaining -= add;
-  }
-
-  const updated: StudyPlan = {
-    ...plan,
-    generatedAt: new Date().toISOString(),
-    days,
-    totalCarriedMinutes: remaining,
-  };
-
-  saveStudyPlan(updated);
+  const redistributed = distributeBacklog({ ...plan, days, totalCarriedMinutes: 0 }, originalMinutes + plan.totalCarriedMinutes, date);
+  saveStudyPlan(redistributed);
   trackLearningEvent('schedule_reflowed', {
     date,
     originalMinutes,
     availableMinutes: 0,
-    movedMinutes: originalMinutes - remaining,
-    stillUnplacedMinutes: remaining,
+    movedMinutes: originalMinutes + plan.totalCarriedMinutes - redistributed.totalCarriedMinutes,
+    stillUnplacedMinutes: redistributed.totalCarriedMinutes,
   });
-  return updated;
+  return redistributed;
 }
 
 export function markDayDone(plan: StudyPlan, date: string): StudyPlan {
@@ -185,7 +277,6 @@ export function markDayDone(plan: StudyPlan, date: string): StudyPlan {
     if (day.date > date && day.status === 'planned' && day.plannedMinutes > 0) {
       return {
         ...day,
-        // Horário e carga permanecem; só o conteúdo é recalculado com a evidência recém-coletada.
         blocks: composeBlocks(day.plannedMinutes),
       };
     }
@@ -219,31 +310,18 @@ export function rescheduleWithMinutes(plan: StudyPlan, date: string, availableMi
     };
   });
 
-  let remaining = deficit;
-  for (let i = index + 1; i < days.length && remaining > 0; i += 1) {
-    const day = days[i];
-    if (day.status === 'unavailable' || day.baseMinutes <= 0) continue;
-    const extraCapacity = Math.max(15, Math.floor(day.baseMinutes * 0.5));
-    const add = Math.min(extraCapacity, remaining);
-    day.carriedMinutes += add;
-    day.plannedMinutes += add;
-    day.blocks = composeBlocks(day.plannedMinutes);
-    remaining -= add;
-  }
-
-  const updated: StudyPlan = {
-    ...plan,
-    generatedAt: new Date().toISOString(),
-    days,
-    totalCarriedMinutes: remaining,
-  };
-  saveStudyPlan(updated);
+  const redistributed = distributeBacklog(
+    { ...plan, days, totalCarriedMinutes: 0 },
+    deficit + plan.totalCarriedMinutes,
+    date,
+  );
+  saveStudyPlan(redistributed);
   trackLearningEvent('schedule_reflowed', {
     date,
     originalMinutes: previous.plannedMinutes,
     availableMinutes,
-    movedMinutes: deficit - remaining,
-    stillUnplacedMinutes: remaining,
+    movedMinutes: deficit + plan.totalCarriedMinutes - redistributed.totalCarriedMinutes,
+    stillUnplacedMinutes: redistributed.totalCarriedMinutes,
   });
-  return updated;
+  return redistributed;
 }
