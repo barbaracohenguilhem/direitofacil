@@ -96,9 +96,7 @@ export function conceptIsUnlocked(
   const concept = getCurriculumConcept(conceptId);
   if (!concept || concept.prerequisites.length === 0) return true;
 
-  return concept.prerequisites.every((prerequisiteId) => {
-    const prerequisite = getCurriculumConcept(conceptId);
-    const threshold = prerequisite?.unlockStrength || 0.52;
-    return (strengths[prerequisiteId] ?? 0) >= threshold;
-  });
+  return concept.prerequisites.every(
+    (prerequisiteId) => (strengths[prerequisiteId] ?? 0) >= concept.unlockStrength,
+  );
 }
