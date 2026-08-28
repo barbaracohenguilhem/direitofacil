@@ -80,6 +80,12 @@ export function canPublishQuestion(record: OABQuestionRecord) {
 }
 
 export function canUseInAssessment(record: OABQuestionRecord) {
+  if (canPublishQuestion(record) && record.status === 'published') return true;
+
+  // Só a pipeline do banco oficial recebe o atalho de prova antes do enriquecimento.
+  const trustedOfficialImport = record.id.startsWith('official-') && !!record.sourceUrl?.trim();
+  if (!trustedOfficialImport) return false;
+
   const question = record.adaptive;
   return Boolean(
     record.conceptId?.trim() &&
@@ -188,13 +194,13 @@ export function getRuntimeQuestionBank(): AdaptiveQuestion[] {
 export function getAssessmentQuestionBank(): AdaptiveQuestion[] {
   if (typeof window === 'undefined') return QUESTION_BANK;
 
-  const classifiedOfficial = loadContentQuestions()
+  const assessmentReady = loadContentQuestions()
     .filter(canUseInAssessment)
     .map((record) => record.adaptive);
 
   const merged = new Map<string, AdaptiveQuestion>();
   for (const question of QUESTION_BANK) merged.set(question.id, question);
-  for (const question of classifiedOfficial) merged.set(question.id, question);
+  for (const question of assessmentReady) merged.set(question.id, question);
   return Array.from(merged.values());
 }
 
