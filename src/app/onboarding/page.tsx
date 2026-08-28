@@ -9,6 +9,13 @@ import type { DailyAvailability, DayKey, FixedCommitment, StudyProfile } from '@
 const steps = ['Prova', 'Sua semana', 'O que já ocupa', 'Seu ritmo', 'Calendário', 'Seu caminho'];
 const days: DayKey[] = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
+const upcomingExams = [
+  { code: '47', label: '47º Exame', date: '2026-09-06', displayDate: '06 set 2026' },
+  { code: '48', label: '48º Exame', date: '2027-01-10', displayDate: '10 jan 2027' },
+  { code: '49', label: '49º Exame', date: '2027-05-09', displayDate: '09 mai 2027' },
+  { code: '50', label: '50º Exame', date: '2027-09-12', displayDate: '12 set 2027' },
+] as const;
+
 const initialAvailability: DailyAvailability[] = days.map((day) => ({
   day,
   minutes: 0,
@@ -26,6 +33,8 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [examDate, setExamDate] = useState('');
+  const [examTargetMode, setExamTargetMode] = useState<'official' | 'practice' | ''>('');
+  const [examCode, setExamCode] = useState('');
   const [sessionMinutes, setSessionMinutes] = useState(45);
   const [connected, setConnected] = useState(false);
   const [availability, setAvailability] = useState<DailyAvailability[]>(initialAvailability);
@@ -36,7 +45,25 @@ export default function OnboardingPage() {
     [availability],
   );
 
+  const targetLabel = useMemo(() => {
+    if (examTargetMode === 'practice') return 'Apenas praticando';
+    const selected = upcomingExams.find((exam) => exam.code === examCode);
+    return selected ? `${selected.label} · ${selected.displayDate}` : 'não definido';
+  }, [examCode, examTargetMode]);
+
   const canContinue = step === 0 ? Boolean(examDate) : step === 1 ? weeklyMinutes > 0 : true;
+
+  function selectOfficialExam(code: string, date: string) {
+    setExamTargetMode('official');
+    setExamCode(code);
+    setExamDate(date);
+  }
+
+  function selectPractice() {
+    setExamTargetMode('practice');
+    setExamCode('');
+    setExamDate('');
+  }
 
   function updateAvailability(day: DayKey, patch: Partial<DailyAvailability>) {
     setAvailability((current) => current.map((item) => (item.day === day ? { ...item, ...patch } : item)));
@@ -78,6 +105,8 @@ export default function OnboardingPage() {
     if (step === steps.length - 1) {
       const profile: StudyProfile = {
         examDate,
+        examTargetMode: examTargetMode || undefined,
+        examCode: examCode || undefined,
         sessionMinutes,
         calendarConnected: connected,
         availability,
@@ -111,13 +140,41 @@ export default function OnboardingPage() {
         <section className="fade-in flex flex-1 flex-col justify-center py-12 md:py-16" key={step}>
           {step === 0 && (
             <div className="max-w-4xl">
-              <p className="text-sm text-[#8d867e]">Primeiro, precisamos saber quanto tempo existe.</p>
-              <h1 className="serif mt-5 max-w-3xl text-5xl leading-[.98] tracking-[-.035em] md:text-7xl">Quando é a sua prova?</h1>
-              <p className="mt-7 max-w-xl text-base leading-7 text-[#77736d]">A data não serve para colocar pressão. Ela muda as escolhas do motor: com quatro meses, construímos base; com três semanas, cada minuto precisa perseguir pontos prováveis.</p>
-              <label className="mt-12 block max-w-lg border-b border-[#cfc8bf] pb-4">
-                <span className="text-xs uppercase tracking-[.11em] text-[#99928a]">Data da 1ª fase</span>
-                <input value={examDate} onChange={(event) => setExamDate(event.target.value)} type="date" className="mt-3 w-full bg-transparent text-2xl outline-none md:text-3xl" />
-              </label>
+              <p className="text-sm text-[#8d867e]">Primeiro, precisamos saber para onde o tempo aponta.</p>
+              <h1 className="serif mt-5 max-w-3xl text-5xl leading-[.98] tracking-[-.035em] md:text-7xl">Qual é a sua próxima prova?</h1>
+              <p className="mt-7 max-w-2xl text-base leading-7 text-[#77736d]">Você não precisa decorar a data da OAB nem sair daqui para procurar. Escolha a edição que pretende fazer. Se estiver só treinando por enquanto, tudo bem: definimos uma data-meta flexível e você pode mudá-la depois.</p>
+
+              <div className="mt-10 grid max-w-3xl gap-2 sm:grid-cols-2">
+                {upcomingExams.map((exam) => {
+                  const selected = examTargetMode === 'official' && examCode === exam.code;
+                  return (
+                    <button
+                      key={exam.code}
+                      onClick={() => selectOfficialExam(exam.code, exam.date)}
+                      className={`flex items-center justify-between rounded-2xl border px-5 py-4 text-left transition ${selected ? 'border-[#191816] bg-[#191816] text-white' : 'border-[#d8d2ca] bg-white text-[#191816] hover:border-[#aaa39a]'}`}
+                    >
+                      <span className="text-sm font-medium">{exam.label}</span>
+                      <span className={`text-xs ${selected ? 'text-white/60' : 'text-[#8d867e]'}`}>{exam.displayDate}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={selectPractice}
+                className={`mt-3 flex w-full max-w-3xl items-center justify-between rounded-2xl border px-5 py-4 text-left transition ${examTargetMode === 'practice' ? 'border-[#191816] bg-[#eeeae4]' : 'border-[#d8d2ca] bg-transparent hover:border-[#aaa39a]'}`}
+              >
+                <span className="text-sm font-medium">Estou apenas praticando</span>
+                <span className="text-xs text-[#8d867e]">sem prova definida</span>
+              </button>
+
+              {examTargetMode === 'practice' && (
+                <label className="mt-8 block max-w-lg border-b border-[#cfc8bf] pb-4">
+                  <span className="text-xs uppercase tracking-[.11em] text-[#99928a]">Escolha uma data-meta</span>
+                  <input value={examDate} onChange={(event) => setExamDate(event.target.value)} type="date" min="2026-08-29" className="mt-3 w-full bg-transparent text-2xl outline-none md:text-3xl" />
+                  <span className="mt-3 block text-xs leading-5 text-[#aaa39a]">Ela só dá horizonte ao plano. Você poderá mudar essa data a qualquer momento.</span>
+                </label>
+              )}
             </div>
           )}
 
@@ -198,6 +255,7 @@ export default function OnboardingPage() {
               <p className="mt-7 max-w-2xl text-base leading-7 text-[#77736d]">Ele vai nascer da sua rotina. Depois, cada resposta, hesitação, pista e revisão passa a mudar o que vem depois — sem você precisar administrar nada.</p>
 
               <div className="mt-12 max-w-2xl border-y border-[#ded9d2] text-sm">
+                <SummaryRow label="Objetivo" value={targetLabel} />
                 <SummaryRow label="Tempo real por semana" value={formatMinutes(weeklyMinutes)} />
                 <SummaryRow label="Bloco confortável" value={`${sessionMinutes} min`} />
                 <SummaryRow label="Compromissos fixos" value={commitments.length ? `${commitments.length}` : 'nenhum'} />
