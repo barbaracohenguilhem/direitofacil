@@ -1,5 +1,5 @@
 import { buildNextActivities, loadLearnerState } from '@/features/adaptive/engine';
-import { getQuestion } from '@/features/adaptive/question-bank';
+import { getRuntimeQuestion } from '@/features/content/repository';
 import { trackLearningEvent } from '@/features/telemetry/engine';
 import type { DayKey, StudyBlock, StudyDay, StudyPlan, StudyProfile } from './types';
 
@@ -117,7 +117,7 @@ function composeBlocks(minutes: number): StudyBlock[] {
   const durations = blockDurations(minutes, activities.length);
 
   return activities.map((activity, index) => {
-    const question = getQuestion(activity.questionId);
+    const question = getRuntimeQuestion(activity.questionId);
     const isReview = activity.reason === 'retention' || activity.reason === 'reinforce' || activity.reason === 'transfer';
     return {
       id: `${activity.questionId}-${index}`,
