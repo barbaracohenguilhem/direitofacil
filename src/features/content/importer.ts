@@ -4,7 +4,36 @@ import { QUESTION_IMPORT_COLUMNS } from './types';
 
 type Row = Record<string, string>;
 
+type CsvDelimiter = ',' | ';' | '\t';
+
+function detectDelimiter(input: string): CsvDelimiter {
+  const counts: Record<CsvDelimiter, number> = { ',': 0, ';': 0, '\t': 0 };
+  let quoted = false;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    const next = input[index + 1];
+
+    if (char === '"' && quoted && next === '"') {
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (!quoted && (char === '\n' || char === '\r')) break;
+    if (!quoted && (char === ',' || char === ';' || char === '\t')) {
+      counts[char as CsvDelimiter] += 1;
+    }
+  }
+
+  return (Object.entries(counts) as [CsvDelimiter, number][])
+    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? ',';
+}
+
 function parseCsvRows(input: string): string[][] {
+  const delimiter = detectDelimiter(input);
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = '';
@@ -25,7 +54,7 @@ function parseCsvRows(input: string): string[][] {
       continue;
     }
 
-    if (char === ',' && !quoted) {
+    if (char === delimiter && !quoted) {
       row.push(cell.trim());
       cell = '';
       continue;
@@ -108,7 +137,7 @@ function validateCorrectOption(value: string, rowNumber: number, issues: ImportI
 
 function validateSource(value: string, rowNumber: number, issues: ImportIssue[]) {
   if (!value.trim()) {
-    issues.push({ row: rowNumber, field: 'sourceUrl', message: 'Fonte oficial não informada. Pode importar, mas revise antes de publicar.', severity: 'warning' });
+    issues.push({ row: rowNumber, field: 'sourceUrl', message: 'Fonte oficial não informada. Pode importar, mas não poderá publicar antes de revisar.', severity: 'warning' });
     return undefined;
   }
   try {
@@ -196,6 +225,7 @@ export function parseQuestionCsv(input: string): ImportPreview {
     if (!(row.secondNudge ?? '').trim()) issues.push({ row: rowNumber, field: 'secondNudge', message: 'Pista 2 vazia.', severity: 'warning' });
     if (!(row.takeaway ?? '').trim()) issues.push({ row: rowNumber, field: 'takeaway', message: 'Resumo essencial vazio.', severity: status === 'published' ? 'error' : 'warning' });
     if (!(row.fgvPattern ?? '').trim()) issues.push({ row: rowNumber, field: 'fgvPattern', message: 'Padrão FGV não classificado.', severity: 'warning' });
+    if (!(row.reasoningKeywords ?? '').trim()) issues.push({ row: rowNumber, field: 'reasoningKeywords', message: 'Sem palavras-chave para avaliar a justificativa. A questão ficará bloqueada para publicação.', severity: 'warning' });
 
     const rowHasError = issues.slice(rowIssueStart).some((issue) => issue.severity === 'error');
     if (rowHasError) {
