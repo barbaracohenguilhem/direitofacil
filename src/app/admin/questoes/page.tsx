@@ -14,7 +14,9 @@ import {
 } from 'lucide-react';
 import { parseQuestionCsv, questionCsvTemplate } from '@/features/content/importer';
 import {
+  canPublishQuestion,
   contentStats,
+  getPublicationIssues,
   loadContentQuestions,
   removeContentQuestion,
   setQuestionStatus,
@@ -37,6 +39,7 @@ export default function AdminQuestionsPage() {
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [importOpen, setImportOpen] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
+  const [qualityNotice, setQualityNotice] = useState<string[] | null>(null);
 
   useEffect(() => {
     setRecords(loadContentQuestions());
@@ -79,18 +82,39 @@ export default function AdminQuestionsPage() {
     setCsv(text);
     setPreview(parseQuestionCsv(text));
     setNotice(null);
+    setQualityNotice(null);
   }
 
   function importValidRows() {
     const result = preview ?? analyze();
     if (!result.records.length) return;
     const next = upsertContentQuestions(result.records);
+    const forcedReview = result.records.filter(
+      (record) => record.status === 'published' && !canPublishQuestion(record),
+    ).length;
     setRecords(next);
-    setNotice(`${result.records.length} questão(ões) importada(s). Linhas inválidas não foram salvas.`);
+    setQualityNotice(null);
+    setNotice(
+      `${result.records.length} questão(ões) importada(s). Linhas inválidas não foram salvas.${forcedReview ? ` ${forcedReview} marcada(s) como publicada(s) foram mantidas em revisão por falta de qualidade editorial.` : ''}`,
+    );
   }
 
   function updateStatus(id: string, status: ContentStatus) {
+    const record = records.find((item) => item.id === id);
+    if (!record) return;
+
+    if (status === 'published') {
+      const issues = getPublicationIssues(record);
+      if (issues.length) {
+        setQualityNotice([`A questão ${id} ainda não pode entrar no motor:`, ...issues]);
+        setNotice(null);
+        return;
+      }
+    }
+
     setRecords(setQuestionStatus(id, status));
+    setQualityNotice(null);
+    setNotice(status === 'published' ? `${id} publicada e liberada para o runtime adaptativo.` : null);
   }
 
   function remove(id: string) {
@@ -110,6 +134,7 @@ export default function AdminQuestionsPage() {
   async function copyTemplate() {
     await navigator.clipboard.writeText(questionCsvTemplate());
     setNotice('Modelo CSV copiado para a área de transferência.');
+    setQualityNotice(null);
   }
 
   return (
@@ -119,7 +144,7 @@ export default function AdminQuestionsPage() {
           <div>
             <div className="text-xs uppercase tracking-[.14em] text-white/35">Admin · Content Engine</div>
             <h1 className="serif mt-3 text-4xl md:text-5xl">Banco de questões</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">Importe milhares de questões em lote, revise os metadados pedagógicos e publique apenas o que já está pronto para entrar no motor adaptativo.</p>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">Importe milhares de questões em lote. Publicar não é apenas trocar um status: a questão precisa passar por um gate jurídico e pedagógico antes de poder chegar ao aluno.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={copyTemplate} className="flex items-center gap-2 rounded-full border border-white/10 px-4 py-2.5 text-xs text-white/60"><Clipboard className="h-4 w-4" /> Copiar modelo</button>
@@ -128,12 +153,18 @@ export default function AdminQuestionsPage() {
         </header>
 
         {notice && <div className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">{notice}</div>}
+        {qualityNotice && (
+          <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-4 text-sm text-amber-50">
+            <div className="flex gap-3"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><div><div className="font-medium">{qualityNotice[0]}</div><ul className="mt-2 space-y-1 text-xs leading-5 text-amber-100/70">{qualityNotice.slice(1).map((issue) => <li key={issue}>• {issue}</li>)}</ul></div></div>
+          </div>
+        )}
 
-        <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
           <Metric label="Importadas" value={stats.total} />
           <Metric label="Rascunho" value={stats.draft} />
           <Metric label="Em revisão" value={stats.review} />
           <Metric label="Publicadas" value={stats.published} />
+          <Metric label="Bloqueadas pelo gate" value={stats.blocked} />
           <Metric label="Matérias" value={stats.subjects} />
           <Metric label="Exames" value={stats.exams} />
         </section>
@@ -182,7 +213,7 @@ export default function AdminQuestionsPage() {
                       <div className="divide-y divide-white/10">
                         {preview.issues.map((issue, index) => (
                           <div key={`${issue.row}-${issue.field}-${index}`} className="flex gap-3 p-4 text-xs">
-                            {issue.severity === 'error' ? <AlertTriangle className="h-4 w-4 shrink-0 text-rose-200" /> : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-200" />}
+                            <AlertTriangle className={`h-4 w-4 shrink-0 ${issue.severity === 'error' ? 'text-rose-200' : 'text-amber-200'}`} />
                             <div><div className="text-white/65">Linha {issue.row}{issue.field ? ` · ${issue.field}` : ''}</div><div className="mt-1 text-white/35">{issue.message}</div></div>
                           </div>
                         ))}
@@ -214,26 +245,31 @@ export default function AdminQuestionsPage() {
           </div>
 
           <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[1050px] border-collapse text-left text-xs">
-              <thead className="text-white/30"><tr><th className="pb-3 font-normal">questão</th><th className="pb-3 font-normal">origem</th><th className="pb-3 font-normal">classificação</th><th className="pb-3 font-normal">conceito</th><th className="pb-3 font-normal">status</th><th className="pb-3 font-normal">ações</th></tr></thead>
+            <table className="w-full min-w-[1100px] border-collapse text-left text-xs">
+              <thead className="text-white/30"><tr><th className="pb-3 font-normal">questão</th><th className="pb-3 font-normal">origem</th><th className="pb-3 font-normal">classificação</th><th className="pb-3 font-normal">conceito</th><th className="pb-3 font-normal">qualidade</th><th className="pb-3 font-normal">status</th><th className="pb-3 font-normal">ações</th></tr></thead>
               <tbody className="divide-y divide-white/10">
-                {filtered.map((record) => (
-                  <tr key={record.id}>
-                    <td className="max-w-[360px] py-4 pr-5 align-top"><div className="text-white/70">{record.id}</div><p className="mt-2 line-clamp-2 text-white/35">{record.adaptive.prompt}</p></td>
-                    <td className="py-4 pr-5 align-top"><div className="text-white/60">{record.exam ?? '—'}</div><div className="mt-1 text-white/30">{record.year ?? '—'} · Q{record.questionNumber ?? '—'}</div></td>
-                    <td className="py-4 pr-5 align-top"><div className="text-white/60">{record.subject}</div><div className="mt-1 text-white/30">{record.topic ?? '—'}{record.subtopic ? ` · ${record.subtopic}` : ''}</div></td>
-                    <td className="py-4 pr-5 align-top"><div className="text-white/60">{record.conceptLabel}</div><div className="mt-1 text-white/30">{record.difficulty}</div></td>
-                    <td className="py-4 pr-5 align-top"><span className={`rounded-full px-2.5 py-1 text-[10px] ${record.status === 'published' ? 'bg-emerald-300/10 text-emerald-200' : record.status === 'review' ? 'bg-amber-300/10 text-amber-100' : 'bg-white/10 text-white/45'}`}>{statusLabel[record.status]}</span></td>
-                    <td className="py-4 align-top">
-                      <div className="flex flex-wrap gap-2">
-                        {record.status !== 'review' && <button onClick={() => updateStatus(record.id, 'review')} className="rounded-full border border-white/10 px-3 py-1.5 text-[10px] text-white/55">Revisar</button>}
-                        {record.status !== 'published' && <button onClick={() => updateStatus(record.id, 'published')} className="rounded-full border border-emerald-300/20 px-3 py-1.5 text-[10px] text-emerald-100">Publicar</button>}
-                        {record.status !== 'draft' && <button onClick={() => updateStatus(record.id, 'draft')} className="rounded-full border border-white/10 px-3 py-1.5 text-[10px] text-white/45">Rascunho</button>}
-                        <button onClick={() => remove(record.id)} className="rounded-full border border-rose-300/10 p-1.5 text-rose-200/60" aria-label={`Excluir ${record.id}`}><Trash2 className="h-3.5 w-3.5" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((record) => {
+                  const publishIssues = getPublicationIssues(record);
+                  const publishable = publishIssues.length === 0;
+                  return (
+                    <tr key={record.id}>
+                      <td className="max-w-[340px] py-4 pr-5 align-top"><div className="text-white/70">{record.id}</div><p className="mt-2 line-clamp-2 text-white/35">{record.adaptive.prompt}</p></td>
+                      <td className="py-4 pr-5 align-top"><div className="text-white/60">{record.exam ?? '—'}</div><div className="mt-1 text-white/30">{record.year ?? '—'} · Q{record.questionNumber ?? '—'}</div></td>
+                      <td className="py-4 pr-5 align-top"><div className="text-white/60">{record.subject}</div><div className="mt-1 text-white/30">{record.topic ?? '—'}{record.subtopic ? ` · ${record.subtopic}` : ''}</div></td>
+                      <td className="py-4 pr-5 align-top"><div className="text-white/60">{record.conceptLabel}</div><div className="mt-1 text-white/30">{record.difficulty}</div></td>
+                      <td className="py-4 pr-5 align-top"><span className={`rounded-full px-2.5 py-1 text-[10px] ${publishable ? 'bg-emerald-300/10 text-emerald-200' : 'bg-amber-300/10 text-amber-100'}`}>{publishable ? 'pronta' : `${publishIssues.length} pendência(s)`}</span></td>
+                      <td className="py-4 pr-5 align-top"><span className={`rounded-full px-2.5 py-1 text-[10px] ${record.status === 'published' ? 'bg-emerald-300/10 text-emerald-200' : record.status === 'review' ? 'bg-amber-300/10 text-amber-100' : 'bg-white/10 text-white/45'}`}>{statusLabel[record.status]}</span></td>
+                      <td className="py-4 align-top">
+                        <div className="flex flex-wrap gap-2">
+                          {record.status !== 'review' && <button onClick={() => updateStatus(record.id, 'review')} className="rounded-full border border-white/10 px-3 py-1.5 text-[10px] text-white/55">Revisar</button>}
+                          {record.status !== 'published' && <button onClick={() => updateStatus(record.id, 'published')} className={`rounded-full border px-3 py-1.5 text-[10px] ${publishable ? 'border-emerald-300/20 text-emerald-100' : 'border-white/10 text-white/25'}`}>Publicar</button>}
+                          {record.status !== 'draft' && <button onClick={() => updateStatus(record.id, 'draft')} className="rounded-full border border-white/10 px-3 py-1.5 text-[10px] text-white/45">Rascunho</button>}
+                          <button onClick={() => remove(record.id)} className="rounded-full border border-rose-300/10 p-1.5 text-rose-200/60" aria-label={`Excluir ${record.id}`}><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
@@ -242,7 +278,7 @@ export default function AdminQuestionsPage() {
         </section>
 
         <footer className="mt-6 flex flex-col gap-3 rounded-[22px] border border-white/10 bg-white/[.025] p-5 text-xs leading-5 text-white/35 md:flex-row md:items-center md:justify-between">
-          <span>Questões publicadas entram no runtime adaptativo; rascunhos e revisão permanecem invisíveis ao aluno.</span>
+          <span>Somente questões publicadas e aprovadas pelo quality gate entram no runtime adaptativo.</span>
           <span>Persistência atual: localStorage · próxima camada: banco/API.</span>
         </footer>
       </div>
