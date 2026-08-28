@@ -7,8 +7,11 @@ const PLAN_KEY = 'direitofacil.study-plan.v1';
 
 const DAY_KEYS: DayKey[] = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-function isoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
+export function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function dayKeyFor(date: Date): DayKey {
@@ -86,7 +89,7 @@ export function generateStudyPlan(profile: StudyProfile, start = new Date()): St
     const baseMinutes = availability?.minutes ?? 0;
 
     days.push({
-      date: isoDate(date),
+      date: localDateKey(date),
       dayKey,
       preferredStart: availability?.preferredStart ?? '19:00',
       baseMinutes,
@@ -110,7 +113,7 @@ export function generateStudyPlan(profile: StudyProfile, start = new Date()): St
 
 export function ensureStudyPlan(profile: StudyProfile): StudyPlan {
   const existing = loadStudyPlan();
-  const today = isoDate(new Date());
+  const today = localDateKey();
   if (existing && existing.examDate === profile.examDate && existing.days.some((day) => day.date === today)) {
     return existing;
   }
@@ -134,7 +137,7 @@ export function reflowMissedDay(plan: StudyPlan, date: string): StudyPlan {
     const day = days[i];
     if (day.status === 'unavailable' || day.baseMinutes <= 0) continue;
 
-    // Nunca despejar uma falta inteira no dia seguinte: respeitar uma margem de 50% da janela-base.
+    // Não despejar uma falta inteira no dia seguinte: usar no máximo 50% extra da janela-base.
     const extraCapacity = Math.max(15, Math.floor(day.baseMinutes * 0.5));
     const add = Math.min(extraCapacity, remaining);
     day.carriedMinutes += add;
