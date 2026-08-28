@@ -1,10 +1,29 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, BookOpenCheck, CalendarClock, MessageCircleMore, UsersRound } from 'lucide-react';
+import { buildNextActivities, loadLearnerState } from '@/features/adaptive/engine';
+import { getQuestion } from '@/features/adaptive/question-bank';
+import type { LearnerState } from '@/features/adaptive/types';
 
 export default function HojePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [learner, setLearner] = useState<LearnerState | null>(null);
+
+  useEffect(() => {
+    setLearner(loadLearnerState());
+  }, []);
+
+  const nextItems = useMemo(() => {
+    if (!learner) return [];
+    return buildNextActivities(learner, 4)
+      .map((activity) => ({ activity, question: getQuestion(activity.questionId) }))
+      .filter((item) => item.question);
+  }, [learner]);
+
+  const completed = searchParams.get('completed') === '1';
 
   return (
     <main className="oab-shell px-4 py-5 md:py-8">
@@ -13,6 +32,12 @@ export default function HojePage() {
           <div className="serif text-xl">direito fácil</div>
           <button className="rounded-full border border-[var(--line)] px-4 py-2 text-sm text-[var(--muted)]">Perfil</button>
         </header>
+
+        {completed && (
+          <div className="mt-8 rounded-2xl border border-[#d9d2ca] bg-[#eee2d7] px-5 py-4 text-sm text-[#5f574f]">
+            Sessão concluída. Seu próximo caminho já foi ajustado com o que aconteceu hoje.
+          </div>
+        )}
 
         <section className="mt-12 grid gap-12 lg:grid-cols-[1.25fr_.75fr] lg:items-end">
           <div>
@@ -23,19 +48,25 @@ export default function HojePage() {
           <div className="rounded-[28px] border border-[var(--line)] bg-white p-6 shadow-[0_16px_60px_rgba(40,34,27,.05)]">
             <div className="flex items-center justify-between text-sm text-[var(--muted)]">
               <span>Hoje</span>
-              <span>47 min</span>
+              <span>{completed ? 'próxima janela' : '47 min'}</span>
             </div>
             <div className="mt-6 space-y-4">
-              <div className="flex items-center justify-between"><span>Ética</span><span className="text-sm text-[var(--muted)]">12 min</span></div>
-              <div className="h-px bg-[var(--line)]" />
-              <div className="flex items-center justify-between"><span>Processo Civil</span><span className="text-sm text-[var(--muted)]">15 min</span></div>
-              <div className="h-px bg-[var(--line)]" />
-              <div className="flex items-center justify-between"><span>Revisão silenciosa</span><span className="text-sm text-[var(--muted)]">8 min</span></div>
-              <div className="h-px bg-[var(--line)]" />
-              <div className="flex items-center justify-between"><span>Questões</span><span className="text-sm text-[var(--muted)]">12 min</span></div>
+              {(nextItems.length ? nextItems : [
+                { question: { subject: 'Ética' }, activity: { reason: 'new' } },
+                { question: { subject: 'Processo Civil' }, activity: { reason: 'new' } },
+                { question: { subject: 'Constitucional' }, activity: { reason: 'new' } },
+              ]).map((item, index) => (
+                <div key={`${item.question?.subject}-${index}`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <span>{item.question?.subject}</span>
+                    <span className="text-sm text-[var(--muted)]">{index === 0 ? '12 min' : index === 1 ? '15 min' : '10 min'}</span>
+                  </div>
+                  {index < Math.min(nextItems.length || 3, 4) - 1 && <div className="mt-4 h-px bg-[var(--line)]" />}
+                </div>
+              ))}
             </div>
-            <button onClick={() => router.push('/sessao/demo')} className="mt-7 flex w-full items-center justify-between rounded-full bg-[var(--ink)] px-5 py-4 text-left text-sm font-medium text-white">
-              Continuar preparação <ArrowRight className="h-4 w-4" />
+            <button onClick={() => router.push('/sessao/hoje')} className="mt-7 flex w-full items-center justify-between rounded-full bg-[var(--ink)] px-5 py-4 text-left text-sm font-medium text-white">
+              {completed ? 'Começar próxima sessão' : 'Continuar preparação'} <ArrowRight className="h-4 w-4" />
             </button>
           </div>
         </section>
@@ -48,8 +79,8 @@ export default function HojePage() {
           </div>
           <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
             <BookOpenCheck className="h-5 w-5" />
-            <div className="mt-6 text-sm text-[var(--muted)]">Plano</div>
-            <div className="mt-1 text-lg">Atualizado hoje</div>
+            <div className="mt-6 text-sm text-[var(--muted)]">Percurso</div>
+            <div className="mt-1 text-lg">{learner?.attempts.length ? 'Recalculado agora' : 'Pronto para começar'}</div>
           </div>
           <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
             <UsersRound className="h-5 w-5" />
