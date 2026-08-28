@@ -96,6 +96,33 @@ export function upsertContentQuestions(incoming: OABQuestionRecord[]) {
   return next;
 }
 
+export function updateQuestionClassification(
+  id: string,
+  classification: { subject: string; conceptId: string; conceptLabel: string },
+) {
+  const current = loadContentQuestions();
+  const next = current.map((record) => {
+    if (record.id !== id) return record;
+    return {
+      ...record,
+      subject: classification.subject,
+      conceptId: classification.conceptId,
+      conceptLabel: classification.conceptLabel,
+      topic: classification.conceptLabel,
+      status: record.status === 'published' ? 'review' as const : record.status,
+      adaptive: {
+        ...record.adaptive,
+        subject: classification.subject,
+        conceptId: classification.conceptId,
+        conceptLabel: classification.conceptLabel,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  saveContentQuestions(next);
+  return next;
+}
+
 export function setQuestionStatus(id: string, status: ContentStatus) {
   const current = loadContentQuestions();
   const next = current.map((record) => {
@@ -138,6 +165,8 @@ export function contentStats(records = loadContentQuestions()) {
     review: records.filter((record) => record.status === 'review').length,
     published: records.filter((record) => record.status === 'published').length,
     blocked: records.filter((record) => record.status !== 'published' && !canPublishQuestion(record)).length,
+    unclassified: records.filter((record) => !record.conceptId?.trim()).length,
+    classified: records.filter((record) => !!record.conceptId?.trim()).length,
     subjects: new Set(records.map((record) => record.subject)).size,
     exams: new Set(records.map((record) => record.exam).filter(Boolean)).size,
   };
