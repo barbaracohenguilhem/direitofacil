@@ -13,6 +13,8 @@ import {
   saveLearnerState,
 } from '@/features/adaptive/engine';
 import type { AdaptiveQuestion, LearnerState, PlannedActivity, ReasoningSignal } from '@/features/adaptive/types';
+import { loadStudyPlan, localDateKey } from '@/features/planning/engine';
+import { trackLearningEvent } from '@/features/telemetry/engine';
 
 type Stage = 'question' | 'why' | 'feedback' | 'explain' | 'materials';
 
@@ -27,6 +29,7 @@ const signalCopy: Record<ReasoningSignal, string> = {
 export default function SessionPage() {
   const router = useRouter();
   const startedAt = useRef(Date.now());
+  const sessionTracked = useRef(false);
   const [learner, setLearner] = useState<LearnerState | null>(null);
   const [plan, setPlan] = useState<PlannedActivity[]>([]);
   const [index, setIndex] = useState(0);
@@ -35,12 +38,34 @@ export default function SessionPage() {
   const [reasoning, setReasoning] = useState('');
   const [hintsUsed, setHintsUsed] = useState(0);
   const [signal, setSignal] = useState<ReasoningSignal>('unknown');
+  const [responseMs, setResponseMs] = useState(0);
+  const [attemptCommitted, setAttemptCommitted] = useState(false);
 
   useEffect(() => {
     const state = loadLearnerState();
-    const nextPlan = buildNextActivities(state, 5);
+    const studyPlan = loadStudyPlan();
+    const today = studyPlan?.days.find((day) => day.date === localDateKey() && day.status === 'planned');
+    const scheduled: PlannedActivity[] = (today?.blocks ?? [])
+      .filter((block) => block.questionId)
+      .map((block) => ({
+        questionId: block.questionId as string,
+        reason: block.adaptiveReason ?? 'new',
+      }));
+
+    const fallbackLimit = Math.max(2, Math.min(5, today?.blocks.length || 5));
+    const fallback = buildNextActivities(state, fallbackLimit);
+    const nextPlan = scheduled.length ? scheduled : fallback;
+
     setLearner(state);
     setPlan(nextPlan.length ? nextPlan : QUESTION_BANK.slice(0, 5).map((q) => ({ questionId: q.id, reason: 'new' as const })));
+
+    if (!sessionTracked.current) {
+      sessionTracked.current = true;
+      trackLearningEvent('session_started', {
+        plannedMinutes: today?.plannedMinutes ?? null,
+        scheduledActivities: nextPlan.length || fallbackLimit,
+      });
+    }
   }, []);
 
   const activity = plan[index];
@@ -51,6 +76,8 @@ export default function SessionPage() {
     setReasoning('');
     setHintsUsed(0);
     setSignal('unknown');
+    setResponseMs(0);
+    setAttemptCommitted(false);
     setStage('question');
     startedAt.current = Date.now();
   }
@@ -70,22 +97,32 @@ export default function SessionPage() {
       question.misconceptionKeywords,
     );
     setSignal(reasoningSignal);
-
-    const updated = applyAttempt(learner, {
-      questionId: question.id,
-      conceptId: question.conceptId,
-      subject: question.subject,
-      selectedOption: selected,
-      correct,
-      reasoningSignal,
-      hintsUsed,
-      responseMs: Date.now() - startedAt.current,
-      createdAt: new Date().toISOString(),
-    });
-
-    setLearner(updated);
-    saveLearnerState(updated);
+    setResponseMs(Date.now() - startedAt.current);
     setStage('feedback');
+  }
+
+  function commitAttemptAndExplain() {
+    if (!question || !selected || !learner) return;
+
+    if (!attemptCommitted) {
+      const updated = applyAttempt(learner, {
+        questionId: question.id,
+        conceptId: question.conceptId,
+        subject: question.subject,
+        selectedOption: selected,
+        correct: selected === question.correctOption,
+        reasoningSignal: signal,
+        hintsUsed,
+        responseMs,
+        createdAt: new Date().toISOString(),
+      });
+
+      setLearner(updated);
+      saveLearnerState(updated);
+      setAttemptCommitted(true);
+    }
+
+    setStage('explain');
   }
 
   function nextQuestion() {
@@ -166,7 +203,7 @@ export default function SessionPage() {
                 {hintsUsed < 2 && (
                   <button onClick={() => setHintsUsed((value) => value + 1)} className="flex items-center gap-2 rounded-full border border-[#d7d1ca] bg-white px-5 py-3 text-sm"><Lightbulb className="h-4 w-4" /> {hintsUsed === 0 ? 'Quero uma pista' : 'Mais uma pista'}</button>
                 )}
-                <button onClick={() => setStage('explain')} className="rounded-full bg-[#1c1a18] px-5 py-3 text-sm text-white">Ver a lógica completa</button>
+                <button onClick={commitAttemptAndExplain} className="rounded-full bg-[#1c1a18] px-5 py-3 text-sm text-white">Ver a lógica completa</button>
               </div>
             </div>
           )}
