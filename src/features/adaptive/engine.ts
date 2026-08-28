@@ -1,4 +1,5 @@
 import { getRuntimeQuestionBank } from '@/features/content/repository';
+import { strategyScoreModifiers } from '@/features/strategy/engine';
 import { trackLearningEvent } from '@/features/telemetry/engine';
 import { conceptIsUnlocked, getCurriculumConcept } from './curriculum';
 import type { Attempt, LearnerState, PlannedActivity, ReasoningSignal } from './types';
@@ -116,8 +117,6 @@ export function buildNextActivities(state: LearnerState, limit = 5): PlannedActi
   );
 
   const runtimeBank = getRuntimeQuestionBank().filter((question) => {
-    // Conteúdo editorial que ainda não pertence ao grafo pode circular normalmente.
-    // Conceitos mapeados no currículo só entram quando o passo anterior demonstrou força suficiente.
     const mapped = getCurriculumConcept(question.conceptId);
     if (!mapped) return true;
     if (state.concepts[question.conceptId]) return true;
@@ -126,7 +125,6 @@ export function buildNextActivities(state: LearnerState, limit = 5): PlannedActi
 
   const ranked = runtimeBank.map((question) => {
     const concept = state.concepts[question.conceptId];
-    const curriculum = getCurriculumConcept(question.conceptId);
     const strength = concept?.strength ?? 0.28;
     const neverSeen = !concept;
     const due = isReviewDue(concept?.nextReviewAt);
@@ -136,8 +134,12 @@ export function buildNextActivities(state: LearnerState, limit = 5): PlannedActi
     const weaknessBoost = (1 - strength) * 0.55;
     const dueBoost = due ? 0.35 : 0;
     const newBoost = neverSeen ? 0.18 : 0;
-    const incidenceBoost = (curriculum?.incidenceWeight ?? 0.8) * 0.12;
     const repeatPenalty = recentlyAttempted ? 0.5 : 0;
+    const strategy = strategyScoreModifiers({
+      conceptId: question.conceptId,
+      strength,
+      neverSeen,
+    });
 
     return {
       question,
@@ -146,7 +148,9 @@ export function buildNextActivities(state: LearnerState, limit = 5): PlannedActi
         dueBoost +
         newBoost +
         transferBoost +
-        incidenceBoost -
+        strategy.incidenceBoost +
+        strategy.pointOpportunityBoost -
+        strategy.lowYieldNewPenalty -
         sameSubjectPenalty -
         repeatPenalty,
       reason: question.isTransfer && concept?.exposures
