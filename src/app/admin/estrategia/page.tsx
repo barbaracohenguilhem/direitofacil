@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { EyeOff, Gauge, Target, TimerReset } from 'lucide-react';
 import { loadLearnerState } from '@/features/adaptive/engine';
 import type { LearnerState } from '@/features/adaptive/types';
-import { getStrategyContext, rankPointOpportunities } from '@/features/strategy/engine';
+import { estimateInternalScoreProjection, getStrategyContext, rankPointOpportunities } from '@/features/strategy/engine';
 
 const modeCopy = {
   foundation: 'Fundação',
@@ -26,6 +26,10 @@ export default function InternalStrategyPage() {
     () => (learner ? rankPointOpportunities(learner) : []),
     [learner],
   );
+  const projection = useMemo(
+    () => (learner ? estimateInternalScoreProjection(learner) : null),
+    [learner],
+  );
 
   return (
     <main className="min-h-dvh bg-[#11110f] px-4 py-6 text-[#f5f2ed] md:px-8 md:py-10">
@@ -36,11 +40,19 @@ export default function InternalStrategyPage() {
           <p className="mt-4 max-w-3xl text-sm leading-6 text-white/45">Esta tela não aparece para o aluno. Ela mostra como o motor muda de comportamento conforme a prova se aproxima e onde existe maior combinação de fraqueza + incidência histórica.</p>
         </header>
 
-        <section className="mt-7 grid gap-3 sm:grid-cols-3">
+        <section className="mt-7 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <Metric icon={<TimerReset className="h-4 w-4" />} label="Dias até a prova" value={context.daysUntilExam === null ? '—' : String(context.daysUntilExam)} />
           <Metric icon={<Gauge className="h-4 w-4" />} label="Modo do motor" value={modeCopy[context.mode]} />
           <Metric icon={<Target className="h-4 w-4" />} label="Pressão de oportunidade" value={`${Math.round(context.urgency * 100)}%`} />
+          <Metric icon={<Target className="h-4 w-4" />} label="Projeção interna" value={projection?.projectedScore === null || projection?.projectedScore === undefined ? '—' : `${projection.projectedScore}/80`} />
+          <Metric icon={<Target className="h-4 w-4" />} label="Distância para 40" value={projection?.gapTo40 === null || projection?.gapTo40 === undefined ? '—' : `${projection.gapTo40} pts`} />
         </section>
+
+        {projection && (
+          <section className="mt-4 rounded-2xl border border-amber-300/15 bg-amber-300/[.06] p-4 text-xs leading-5 text-amber-100/65">
+            <strong className="text-amber-50">Projeção experimental — não exibir ao aluno.</strong> {projection.note} Confiança atual: {Math.round(projection.confidence * 100)}%; cobertura observada: {projection.observedConcepts}/{projection.totalConcepts} conceitos do grafo piloto.
+          </section>
+        )}
 
         <section className="mt-6 rounded-[26px] border border-white/10 bg-white/[.035] p-5 md:p-7">
           <div className="flex items-end justify-between gap-5">
