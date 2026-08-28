@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, BookOpenText, FileText, Map, Sparkles } from 'lucide-react';
+import { ArrowLeft, BookOpenText, FileText, Map as MapIcon, Sparkles } from 'lucide-react';
 import { loadLearnerState } from '@/features/adaptive/engine';
 import { QUESTION_BANK } from '@/features/adaptive/question-bank';
 import type { LearnerState } from '@/features/adaptive/types';
@@ -82,7 +82,7 @@ export default function MaterialsPage() {
                     <p className="mt-3 text-sm leading-6 text-[#625c56]">{selected.takeaway}</p>
                   </article>
                   <article className="rounded-2xl border border-[#ded9d2] p-5">
-                    <Map className="h-5 w-5" />
+                    <MapIcon className="h-5 w-5" />
                     <div className="mt-5 text-sm font-medium">Mapa mental</div>
                     <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#625c56]">
                       <span className="rounded-full bg-[#f1ede8] px-3 py-2">regra central</span>
