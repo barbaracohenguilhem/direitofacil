@@ -9,6 +9,7 @@ import {
   ensureStudyPlan,
   loadStudyProfile,
   localDateKey,
+  markDayDone,
   reflowMissedDay,
   rescheduleWithMinutes,
 } from '@/features/planning/engine';
@@ -38,11 +39,17 @@ export default function HojePage() {
       return;
     }
 
-    const currentPlan = ensureStudyPlan(storedProfile);
+    const completedNow = new URLSearchParams(window.location.search).get('completed') === '1';
+    let currentPlan = ensureStudyPlan(storedProfile);
+    if (completedNow) {
+      currentPlan = markDayDone(currentPlan, localDateKey());
+      window.history.replaceState({}, '', '/hoje');
+    }
+
     setProfile(storedProfile);
     setPlan(currentPlan);
     setLearner(loadLearnerState());
-    setCompleted(new URLSearchParams(window.location.search).get('completed') === '1');
+    setCompleted(completedNow);
   }, [router]);
 
   const todayKey = localDateKey();
