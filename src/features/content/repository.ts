@@ -3,7 +3,23 @@ import type { AdaptiveQuestion } from '@/features/adaptive/types';
 import type { ContentStatus, OABQuestionRecord } from './types';
 
 const STORAGE_KEY = 'direitofacil.content-questions.v1';
-const PLACEHOLDER_EXPLANATION = 'Explicação editorial ainda não cadastrada.';
+
+function isEditorialPlaceholder(value?: string) {
+  const normalized = value?.trim().toLowerCase() ?? '';
+  if (!normalized) return true;
+  return [
+    'ainda não cadastr',
+    'ainda nao cadastr',
+    'pendente de enriquecimento',
+    'pendente de revisão',
+    'pendente de revisao',
+    'ainda não classific',
+    'ainda nao classific',
+    'definir orientação',
+    'definir orientacao',
+    'dispositivo a revisar',
+  ].some((marker) => normalized.includes(marker));
+}
 
 export function loadContentQuestions(): OABQuestionRecord[] {
   if (typeof window === 'undefined') return [];
@@ -37,24 +53,23 @@ export function getPublicationIssues(record: OABQuestionRecord) {
     issues.push('As quatro alternativas precisam estar preenchidas.');
   }
 
-  if (
-    adaptive.options.some(
-      (option) => !option.explanation.trim() || option.explanation.trim() === PLACEHOLDER_EXPLANATION,
-    )
-  ) {
+  if (adaptive.options.some((option) => isEditorialPlaceholder(option.explanation))) {
     issues.push('Explique por que cada alternativa está certa ou errada.');
   }
 
   if (!adaptive.reasoningKeywords.length) {
     issues.push('Cadastre ao menos uma palavra-chave para avaliar a justificativa do aluno.');
   }
-  if (!adaptive.nudge.trim()) issues.push('Cadastre a primeira pista pedagógica.');
-  if (!adaptive.secondNudge.trim()) issues.push('Cadastre a segunda pista pedagógica.');
-  if (!adaptive.takeaway.trim() || adaptive.takeaway === 'Conteúdo pendente de revisão editorial.') {
+  if (isEditorialPlaceholder(adaptive.nudge)) issues.push('Cadastre a primeira pista pedagógica.');
+  if (isEditorialPlaceholder(adaptive.secondNudge)) issues.push('Cadastre a segunda pista pedagógica.');
+  if (isEditorialPlaceholder(adaptive.takeaway)) {
     issues.push('Cadastre o que o aluno precisa guardar da questão.');
   }
-  if (!adaptive.fgvPattern.trim() || adaptive.fgvPattern === 'Padrão ainda não classificado.') {
+  if (isEditorialPlaceholder(adaptive.fgvPattern)) {
     issues.push('Classifique a pegadinha ou padrão da FGV.');
+  }
+  if (adaptive.vade && (isEditorialPlaceholder(adaptive.vade.article) || isEditorialPlaceholder(adaptive.vade.instruction))) {
+    issues.push('Revise a orientação de Vade Mecum ou remova o bloco se não for aplicável.');
   }
 
   return issues;
